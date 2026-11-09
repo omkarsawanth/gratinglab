@@ -17,7 +17,7 @@ A modular wave-optics simulation and inverse material characterization suite cre
 - Minimal dependencies: NumPy, SciPy, Matplotlib, pytest
 
 ```bash
-git clone https://github.com/your-username/gratinglab.git
+git clone https://github.com/omkarsawanth/gratinglab.git
 cd gratinglab
 
 # Install dependencies
