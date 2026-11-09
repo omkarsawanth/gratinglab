@@ -1,0 +1,32 @@
+============================= test session starts =============================
+platform win32 -- Python 3.11.9, pytest-9.1.1, pluggy-1.7.0
+rootdir: D:\Ohysics microproject
+plugins: dash-4.4.1, cov-7.1.0
+collected 34 items
+
+tests\test_analytical.py ......                                          [ 17%]
+tests\test_case_studies.py ...                                           [ 26%]
+tests\test_characterize.py ..                                            [ 32%]
+tests\test_constants.py ....                                             [ 44%]
+tests\test_edge_cases.py .....                                           [ 58%]
+tests\test_gratings.py .......                                           [ 79%]
+tests\test_propagation.py ....                                           [ 91%]
+tests\test_validation.py .                                               [ 94%]
+tests\test_visualize.py ..                                               [100%]
+
+=============================== tests coverage ================================
+_______________ coverage: platform win32, python 3.11.9-final-0 _______________
+
+Name                         Stmts   Miss  Cover
+------------------------------------------------
+gratinglab\__init__.py           3      0   100%
+gratinglab\analytical.py        76     10    87%
+gratinglab\case_studies.py     194     78    60%
+gratinglab\characterize.py      80     12    85%
+gratinglab\constants.py         43      4    91%
+gratinglab\gratings.py          94     21    78%
+gratinglab\propagation.py      113     30    73%
+gratinglab\visualize.py        217    172    21%
+------------------------------------------------
+TOTAL                          820    327    60%
+============================= 34 passed in 10.42s =============================

@@ -1,0 +1,19 @@
+========================================================================================
+  GratingLab Module Runtime Benchmark (100 repetitions per function)
+========================================================================================
+Module & Function                          | Input Size         |     Mean Latency
+----------------------------------------------------------------------------------------
+gratinglab.constants.nm_to_m               | Scalar float       |          0.14 µs
+gratinglab.analytical.order_angles         | d=1.6µm, m_max=4   |          2.36 µs
+gratinglab.analytical.n_slit_intensity     | N=20, 2048 pts     |         76.92 µs
+gratinglab.analytical.missing_orders       | d=2µm, a=1µm       |          2.58 µs
+gratinglab.analytical.talbot_distance      | d=1.6µm, λ=650nm   |          0.21 µs
+gratinglab.gratings.binary_amplitude       | N=2048 samples     |         35.10 µs
+gratinglab.gratings.sinusoidal_phase       | N=2048 samples     |         62.46 µs
+gratinglab.gratings.blazed                 | N=2048 samples     |         64.16 µs
+gratinglab.propagation.gaussian_beam       | N=2048 samples     |         12.04 µs
+gratinglab.propagation.far_field_fft       | N=2048, pad=2      |         90.17 µs
+gratinglab.propagation.angular_spectrum    | N=2048, 1 step     |         89.80 µs
+gratinglab.characterize.find_orders        | 2048 samples       |         25.18 µs
+gratinglab.characterize.estimate_period    | 5 orders regression |        179.99 µs
+========================================================================================

@@ -1,0 +1,20 @@
+# ==============================================================================
+# GratingLab Experimental Validation Dataset
+# ==============================================================================
+# NOTE: The numbers below are realistic benchmark values with ~0.5% lab noise.
+# REPLACE WITH REAL DATA from your laboratory optical bench measurements!
+#
+# Columns:
+#   media:             'CD' or 'DVD'
+#   screen_distance_m: Distance from disc track surface to screen L [meters]
+#   order_m:           Diffraction order integer m (e.g., 1, 2)
+#   spot_offset_m:     Measured distance from 0-th order center to order spot y [meters]
+#   wavelength_nm:     Laser wavelength in nm (default 650.0)
+# ==============================================================================
+media,screen_distance_m,order_m,spot_offset_m,wavelength_nm
+CD,0.500,1,0.2235,650.0
+CD,0.500,2,0.6980,650.0
+CD,0.750,1,0.3340,650.0
+CD,0.750,2,1.0490,650.0
+DVD,0.500,1,0.9220,650.0
+DVD,0.750,1,1.3810,650.0
