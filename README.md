@@ -8,6 +8,12 @@
 
 A modular wave-optics simulation and inverse material characterization suite created for university physics micro-projects. GratingLab bridges theoretical electromagnetism, numerical wave optics (Fraunhofer FFT & Angular Spectrum Method), and real-world industrial optical metrology (semiconductor wafer pitch estimation, optical disc diagnostics, and thermal strain sensing).
 
+<p align="center">
+  <img src="examples/outputs/instrument_dashboard_1280x720.png" alt="GratingLab Research-Grade Instrument Dashboard" width="100%">
+  <br>
+  <em><strong>Figure 1:</strong> GratingLab laboratory instrument dashboard simulating a binary transmission grating with synchronized aperture transmittance, far-field Fraunhofer profile, true-color observation screen strip, and live physical diagnostics.</em>
+</p>
+
 ---
 
 ## 1. Installation
@@ -71,6 +77,13 @@ When executing `python main.py`, the interactive studio opens:
 |   [x] Compare Analytical   | Summary of propagating orders, angles θₘ, missing orders |
 +---------------------------------------------------------------------------------------+
 ```
+
+### Studio Visualizations Showcase
+
+| **Blazed Phase Spectrometer Interface** | **Near-Field Talbot Carpet ($z \le 2 z_T$)** |
+| :---: | :---: |
+| <img src="examples/outputs/instrument_blazed_1280x720.png" alt="Blazed Phase Grating Spectrometer" width="480"> | <img src="examples/outputs/talbot_carpet_research.png" alt="Talbot Self-Imaging Carpet" width="480"> |
+| *Asymmetric diffraction orders concentrating energy into target blaze order.* | *Angular spectrum method propagation showing non-diffracting self-imaging planes.* |
 
 ### Slider Controls Reference
 | Parameter | Slider Name | Physical Meaning & Units | Default |
@@ -156,6 +169,12 @@ Grid parameters: $W = 100 \times d$, $N = 8192$ samples, zero-padding factor $P 
 
 > **Conclusion**: The numerical FFT spectral sampling aligns with the analytical solution with **0.000% error** because the spatial window $W_{\text{pad}} = P \cdot W = 400 d$ forms an exact harmonic integer grid for the spatial frequencies $f_x = m / d$.
 
+<p align="center">
+  <img src="examples/outputs/cd_dvd_validation.png" alt="Optical Media Diffraction Pitch Validation" width="880">
+  <br>
+  <em><strong>Figure 2:</strong> Optical bench validation benchmarking numerical wave propagation against the closed-form analytical grating equation for CD ($d = 1.60\,\mu\text{m}$) and DVD ($d = 0.74\,\mu\text{m}$) tracks at $\lambda = 650\,\text{nm}$.</em>
+</p>
+
 ---
 
 ### (b) Experimental Validation
@@ -180,6 +199,17 @@ Grid parameters: $W = 100 \times d$, $N = 8192$ samples, zero-padding factor $P 
    - Class 2 / 3R laser safety rules apply.
    - **Never look directly into the primary laser aperture or specular reflected beams.**
    - Restrict beam paths to bench level and terminate stray reflections with non-reflective beam stops.
+
+---
+
+### (c) Industrial Material Characterization Case Studies
+
+GratingLab provides three end-to-end industrial characterization modules executed via `python -m gratinglab.case_studies`:
+
+| **Case Study 1: Thermal Strain Sensing** | **Case Study 2: Groove Depth Profilometry** | **Case Study 3: 2D Lattice Metrology** |
+| :---: | :---: | :---: |
+| <img src="examples/outputs/case_study_1_strain_temperature.png" alt="Thermal Strain Sensing" width="310"> | <img src="examples/outputs/case_study_2_groove_depth.png" alt="Groove Depth Profilometry" width="310"> | <img src="examples/outputs/case_study_3_2d_lattice.png" alt="2D Lattice Metrology" width="310"> |
+| *Inverse grating pitch shift tracking thermal expansion coefficient $\alpha$.* | *Zero-order suppression and phase depth extraction for semiconductor etching.* | *2D orthogonal Fourier diffraction mapping for photonic crystals and 2D materials.* |
 
 
 ---
