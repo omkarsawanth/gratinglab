@@ -190,6 +190,14 @@ class GratingLabApp:
             wspace=0.22,
         )
 
+        # Precision chassis hairline dividers
+        self.fig.add_artist(
+            plt.Line2D([0.035, 0.965], [0.930, 0.930], color="#242c38", linewidth=1.0, transform=self.fig.transFigure)
+        )
+        self.fig.add_artist(
+            plt.Line2D([0.035, 0.965], [0.430, 0.430], color="#242c38", linewidth=1.0, transform=self.fig.transFigure)
+        )
+
     def _create_dark_slider(
         self,
         cell,
