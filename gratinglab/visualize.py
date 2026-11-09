@@ -21,7 +21,6 @@ from __future__ import annotations
 import math
 import os
 import sys
-import time
 
 # Ensure an interactive backend is used for desktop GUI rendering if not in headless mode
 import matplotlib
@@ -173,16 +172,13 @@ class GratingLabApp:
         self.phase_depth = 2.0 * math.pi
         self.log_scale = False
         self.compare_analytical = True
-        self.num_samples = 1024
+        self.num_samples = 2048
 
         # Interactive state & performance guards
         self._bulk_updating = False
         self._last_sim_params = None
         self._last_log_scale = False
         self._active_preset_idx = None
-        self._last_update_time = 0.0
-        self._update_timer = None
-        self._update_timer_running = False
 
         self.build_layout()
         self.build_controls()
@@ -228,121 +224,12 @@ class GratingLabApp:
                 spine.set_color("#242c38")
                 spine.set_linewidth(0.8)
 
-        # ─── Channel 1 Static Layout & Pre-instantiated Artists ───
-        self.title_profile = self.ax_profile.set_title(
-            f"CH1 // APERTURE TRANSMITTANCE [{self.grating_type.upper()}]",
-            fontsize=9, fontweight="bold", color="#e6edf3", pad=10, loc="left"
-        )
-        self.ax_profile.set_xlabel("Transverse Coordinate x [µm]", fontsize=8, color="#8b949e", labelpad=2)
-        self.ax_profile.set_ylabel("Field Amplitude / Phase (rad/π)", fontsize=8, color="#8b949e")
-        self.ax_profile.set_ylim(-1.15, 1.28)
-        self.ax_profile.grid(True, linestyle=":", color="#212936", alpha=0.8)
-
-        self.poly_trans_fill = self.ax_profile.fill_between([0, 1], 0, [1, 1], color="#14b8a6", alpha=0.18, label="|t(x)| Magnitude")
-        self.line_trans_mag, = self.ax_profile.plot([], [], color="#2dd4bf", lw=1.8)
-        self.line_trans_phase, = self.ax_profile.plot([], [], color="#f97316", ls="--", lw=1.4, label="Phase φ(x) / π")
-        self.line_trans_beam, = self.ax_profile.plot([], [], color="#94a3b8", ls=":", lw=1.2, alpha=0.75, label="Beam Envelope w₀")
-
-        self.ann_period = self.ax_profile.annotate(
-            "", xy=(0.0, 1.08), xytext=(1.6, 1.08),
-            arrowprops=dict(arrowstyle="<->", color="#38bdf8", lw=1.0),
-            visible=False,
-        )
-        self.ann_period_txt = self.ax_profile.text(
-            0.8, 1.12, "",
-            ha="center", va="bottom", fontsize=7.5, color="#38bdf8", family="monospace", fontweight="bold",
-            visible=False,
-        )
-
-        leg1 = self.ax_profile.legend(loc="upper right", fontsize=7.2, facecolor="#161c24", edgecolor="#2c3543")
-        for text in leg1.get_texts():
-            text.set_color("#e6edf3")
-
-        # ─── Channel 2 Static Layout & Pre-instantiated Artists ───
-        self.title_fft = self.ax_fft.set_title(
-            "CH2 // FAR-FIELD FRAUNHOFER DIFFRACTION SPECTRUM",
-            fontsize=9, fontweight="bold", color="#e6edf3", pad=10, loc="left"
-        )
-        self.ax_fft.set_xlabel("Diffraction Angle θ [deg]", fontsize=8, color="#8b949e", labelpad=2)
-        self.lbl_fft_ylabel = self.ax_fft.set_ylabel("Normalized Spectral Irradiance I(θ)", fontsize=8, color="#8b949e")
-        self.ax_fft.set_xlim(-50.0, 50.0)
-        self.ax_fft.set_ylim(-0.02, 1.08)
-        self.ax_fft.grid(True, linestyle=":", color="#212936", alpha=0.8)
-
-        self.poly_fft_fill = self.ax_fft.fill_between([0, 1], 0, [1, 1], color="#10b981", alpha=0.12)
-        self.line_fft, = self.ax_fft.plot([], [], label="Numerical FFT", color="#10b981", lw=1.6)
-        self.line_analytical, = self.ax_fft.plot([], [], label="Analytical N-Slit", color="#f59e0b", ls=":", lw=1.3, visible=False)
-        self.line_envelope, = self.ax_fft.plot([], [], label="Slit Envelope sinc²(β)", color="#64748b", ls="-.", lw=1.1, alpha=0.8, visible=False)
-
-        self.vline_orders_pool = [
-            self.ax_fft.axvline(0, color="#334155", linestyle="--", alpha=0.6, lw=0.9, visible=False)
-            for _ in range(30)
-        ]
-        self.txt_orders_pool = [
-            self.ax_fft.text(
-                0, 1.01, "",
-                transform=self.ax_fft.get_xaxis_transform(),
-                fontsize=8, ha="center", va="bottom",
-                color="#38bdf8", fontweight="bold", family="monospace",
-                visible=False,
-            )
-            for _ in range(30)
-        ]
-
-        self.scatter_peaks = self.ax_fft.scatter([], [], s=18, zorder=4, edgecolor="#0b0f14", linewidth=0.5)
-        self.scatter_missing = self.ax_fft.scatter([], [], marker="x", color="#ef4444", s=22, zorder=5, lw=1.2)
-        self.txt_missing_pool = [
-            self.ax_fft.text(0, 0, "", ha="center", va="bottom", fontsize=6.8, color="#ef4444", family="monospace", visible=False)
-            for _ in range(12)
-        ]
-
         # ─── Detector Array Screen Strip ───
         self.ax_screen = self.fig.add_subplot(self.gs_main[2], facecolor="#000000")
         self.ax_screen.tick_params(colors="#8b949e", labelsize=8)
         for spine in self.ax_screen.spines.values():
             spine.set_color("#242c38")
             spine.set_linewidth(0.8)
-
-        self.title_screen = self.ax_screen.set_title(
-            "DETECTOR ARRAY // SIMULATED SCREEN PATTERN",
-            fontsize=8.5, fontweight="bold", color="#e6edf3", pad=8, loc="left"
-        )
-        self.ax_screen.set_xlabel("Transverse Screen Displacement y [cm] (Metric Scale)", fontsize=8, color="#8b949e", labelpad=2)
-        self.ax_screen.set_xlim(-30.0, 30.0)
-        self.ax_screen.set_ylim(-1.5, 2.0)
-        self.ax_screen.set_yticks([])
-
-        self.im_screen = self.ax_screen.imshow(
-            np.zeros((25, 400)),
-            extent=[-30.0, 30.0, -1.5, 1.5],
-            cmap="inferno",
-            aspect="auto",
-            origin="lower",
-        )
-        self.scatter_screen_pointers = self.ax_screen.scatter([], [], marker="v", color="#38bdf8", s=16, zorder=5)
-        self.txt_screen_pool = [
-            self.ax_screen.text(0, 1.48, "", ha="center", va="bottom", fontsize=6.8, color="#38bdf8", family="monospace", visible=False)
-            for _ in range(30)
-        ]
-
-        # Deferred rate-limiting timer
-        try:
-            self._update_timer = self.fig.canvas.new_timer(interval=25)
-            self._update_timer.single_shot = True
-            self._update_timer.add_callback(self._on_deferred_update)
-        except Exception:
-            self._update_timer = None
-        self._update_timer_running = False
-        self._last_update_time = 0.0
-        self._pending_update = False
-        self._is_dragging = False
-        self._bg_profile = None
-        self._bg_fft = None
-        self._bg_screen = None
-
-        self.fig.canvas.mpl_connect("draw_event", self._on_draw)
-        self.fig.canvas.mpl_connect("resize_event", self._on_resize)
-        self.fig.canvas.mpl_connect("button_release_event", self._on_release)
 
         # ─── 4-Column Control Deck & Terminal ───
         self.gs_controls = self.gs_main[3].subgridspec(
@@ -375,18 +262,10 @@ class GratingLabApp:
 
         ax_lbl = self.fig.add_subplot(gs_item[0])
         ax_lbl.axis("off")
-        ax_lbl.set_xticks([])
-        ax_lbl.set_yticks([])
-        ax_lbl.xaxis.set_visible(False)
-        ax_lbl.yaxis.set_visible(False)
         ax_lbl.text(0.0, 0.1, title, fontsize=8.0, fontweight="bold", color="#8b949e", ha="left", va="bottom", family="monospace")
         val_txt = ax_lbl.text(1.0, 0.1, valfmt % valinit, fontsize=8.3, fontweight="bold", color=accent_color, ha="right", va="bottom", family="monospace")
 
         ax_track = self.fig.add_subplot(gs_item[1], facecolor="#161c24")
-        ax_track.set_xticks([])
-        ax_track.set_yticks([])
-        ax_track.xaxis.set_visible(False)
-        ax_track.yaxis.set_visible(False)
         for spine in ax_track.spines.values():
             spine.set_color("#242c38")
             spine.set_linewidth(0.8)
@@ -411,175 +290,18 @@ class GratingLabApp:
             slider = Slider(ax_track, "", valmin, valmax, **slider_kwargs)
 
         slider.valtext.set_visible(False)
-        slider.drawon = False
 
         def on_change(val):
-            self._is_dragging = True
             val_txt.set_text(valfmt % val)
-            if hasattr(self.fig.canvas, "copy_from_bbox"):
-                try:
-                    ax_track.draw_artist(slider.poly)
-                    if hasattr(slider, "_handle"):
-                        ax_track.draw_artist(slider._handle)
-                    self.fig.canvas.blit(ax_track.bbox)
-                    ax_lbl.draw_artist(val_txt)
-                    self.fig.canvas.blit(ax_lbl.bbox)
-                except Exception:
-                    pass
             if not self._bulk_updating:
-                if self._active_preset_idx is not None:
-                    self._set_active_preset(None)
-                self._request_update()
+                self._set_active_preset(None)
+                self.update(None)
 
         slider.on_changed(on_change)
         return slider, ax_lbl, ax_track, val_txt
 
-    def _on_draw(self, event=None) -> None:
-        """Cache clean static backgrounds for fast blitting."""
-        if not hasattr(self.fig.canvas, "copy_from_bbox"):
-            return
-        try:
-            if not self._is_dragging:
-                self._bg_profile = self.fig.canvas.copy_from_bbox(self.ax_profile.bbox)
-                self._bg_fft = self.fig.canvas.copy_from_bbox(self.ax_fft.bbox)
-                self._bg_screen = self.fig.canvas.copy_from_bbox(self.ax_screen.bbox)
-        except Exception:
-            self._bg_profile = None
-            self._bg_fft = None
-            self._bg_screen = None
-
-    def _on_resize(self, event=None) -> None:
-        """Invalidate blit background cache on window resize."""
-        self._bg_profile = None
-        self._bg_fft = None
-        self._bg_screen = None
-
-    def _on_release(self, event=None) -> None:
-        """Ensure full figure redraw when mouse interaction concludes."""
-        if self._is_dragging:
-            self._is_dragging = False
-            self.update(None, full_draw=True)
-
-    def _fast_draw(self) -> bool:
-        """Fast blit update of simulation oscilloscopes and detector screen. Returns True if blit succeeded."""
-        if self._bg_profile is None or self._bg_fft is None or self._bg_screen is None:
-            return False
-
-        canvas = self.fig.canvas
-        try:
-            canvas.restore_region(self._bg_profile)
-            canvas.restore_region(self._bg_fft)
-            canvas.restore_region(self._bg_screen)
-
-            # Channel 1: Aperture transmittance
-            self.ax_profile.draw_artist(self.poly_trans_fill)
-            self.ax_profile.draw_artist(self.line_trans_mag)
-            self.ax_profile.draw_artist(self.line_trans_phase)
-            self.ax_profile.draw_artist(self.line_trans_beam)
-            if self.ann_period.get_visible():
-                self.ax_profile.draw_artist(self.ann_period)
-                self.ax_profile.draw_artist(self.ann_period_txt)
-
-            # Channel 2: Fraunhofer FFT
-            self.ax_fft.draw_artist(self.poly_fft_fill)
-            self.ax_fft.draw_artist(self.line_fft)
-            if self.line_analytical.get_visible():
-                self.ax_fft.draw_artist(self.line_analytical)
-                self.ax_fft.draw_artist(self.line_envelope)
-
-            for vl in self.vline_orders_pool:
-                if vl.get_visible():
-                    self.ax_fft.draw_artist(vl)
-
-            for txt in self.txt_orders_pool:
-                if txt.get_visible():
-                    self.ax_fft.draw_artist(txt)
-
-            if self.scatter_peaks.get_visible():
-                self.ax_fft.draw_artist(self.scatter_peaks)
-
-            if self.scatter_missing.get_visible():
-                self.ax_fft.draw_artist(self.scatter_missing)
-
-            for txt in self.txt_missing_pool:
-                if txt.get_visible():
-                    self.ax_fft.draw_artist(txt)
-
-            # Channel 3: Detector Screen
-            self.ax_screen.draw_artist(self.im_screen)
-            if self.scatter_screen_pointers.get_visible():
-                self.ax_screen.draw_artist(self.scatter_screen_pointers)
-
-            for txt in self.txt_screen_pool:
-                if txt.get_visible():
-                    self.ax_screen.draw_artist(txt)
-
-            canvas.blit(self.ax_profile.bbox)
-            canvas.blit(self.ax_fft.bbox)
-            canvas.blit(self.ax_screen.bbox)
-            return True
-        except Exception:
-            return False
-
-    def _on_deferred_update(self) -> None:
-        """Callback fired by single-shot timer to ensure final position updates."""
-        self._do_throttled_update()
-
-    def _do_throttled_update(self) -> None:
-        if not self._pending_update:
-            return
-        self._pending_update = False
-        self._update_timer_running = False
-        try:
-            self.update(None, fast_mode=self._is_dragging)
-        finally:
-            self._last_update_time = time.perf_counter()
-
-    def _request_update(self) -> None:
-        """Rate-limit simulation updates to ~30 FPS to prevent GUI event-loop choking."""
-        self._pending_update = True
-        # In non-interactive/headless environments (e.g. testing with Agg), update immediately
-        if self._update_timer is None or matplotlib.get_backend().lower() in ("agg", "template", "pdf", "ps", "svg"):
-            self._pending_update = False
-            self.update(None)
-            return
-
-        if self._update_timer_running:
-            return
-
-        now = time.perf_counter()
-        elapsed = now - self._last_update_time
-        if elapsed >= 0.035:
-            self._do_throttled_update()
-        else:
-            self._update_timer_running = True
-            try:
-                self._update_timer.interval = max(10, int((0.035 - elapsed) * 1000))
-                self._update_timer.start()
-            except Exception:
-                self._update_timer_running = False
-                self._do_throttled_update()
-
-    def _update_fft_legend(self) -> None:
-        """Update Channel 2 legend without destroying the Axes or incurring layout rebuilds."""
-        if self.compare_analytical and self.grating_type == "Binary Amplitude":
-            handles = [self.line_fft, self.line_analytical, self.line_envelope]
-        else:
-            handles = [self.line_fft]
-        self.leg_fft = self.ax_fft.legend(
-            handles=handles,
-            loc="upper right",
-            fontsize=7.2,
-            facecolor="#161c24",
-            edgecolor="#2c3543",
-        )
-        for text in self.leg_fft.get_texts():
-            text.set_color("#e6edf3")
-
     def _set_active_preset(self, active_idx: int | None) -> None:
         """Update top preset buttons to indicate selected active preset state."""
-        if self._active_preset_idx == active_idx:
-            return
         self._active_preset_idx = active_idx
         preset_btns = [self.btn_preset1, self.btn_preset2, self.btn_preset3]
         for i, btn in enumerate(preset_btns):
@@ -644,52 +366,38 @@ class GratingLabApp:
 
     def build_controls(self) -> None:
         """Construct the top preset bar, 3 instrument control decks, and real-time telemetry terminal."""
-        def _clean_control_ax(ax):
-            ax.set_xticks([])
-            ax.set_yticks([])
-            ax.xaxis.set_visible(False)
-            ax.yaxis.set_visible(False)
-            return ax
-
         # ─────────────────────────────────────────────────────────────
         # Top Header Bar Content
         # ─────────────────────────────────────────────────────────────
-        _clean_control_ax(self.ax_head_brand)
         self.ax_head_brand.text(0.0, 0.85, "GRATINGLAB // OPTICAL SPECTROMETER", fontsize=10.5, fontweight="bold", color="#f0f6fc", family="sans-serif")
         self.ax_head_brand.text(0.0, 0.15, "SYS-ID: GL-650X-PRO  |  PRECISION OPTICAL METROLOGY", fontsize=7.6, color="#8b949e", family="monospace")
 
-        _clean_control_ax(self.ax_head_status)
         self.lbl_head_status = self.ax_head_status.text(0.5, 0.85, "● SYSTEM ONLINE", fontsize=8.8, fontweight="bold", color="#10b981", family="monospace", ha="center")
         self.lbl_head_telemetry = self.ax_head_status.text(0.5, 0.15, "LIVE // λ = 650 nm | d = 1.60 µm | n = 1.50", fontsize=7.6, color="#64748b", family="monospace", ha="center")
 
         # Top Instrument Action Buttons
-        ax_btn1 = _clean_control_ax(self.fig.add_subplot(self.gs_hbtns[0]))
-        self.btn_preset1 = Button(ax_btn1, "Single Slit", color="#161c24", hovercolor="#242c38")
+        self.btn_preset1 = Button(self.fig.add_subplot(self.gs_hbtns[0]), "Single Slit", color="#161c24", hovercolor="#242c38")
         self.btn_preset1.label.set_fontsize(7.5)
         self.btn_preset1.label.set_color("#e6edf3")
         self.btn_preset1.on_clicked(lambda _e: self.apply_preset("Single slit"))
 
-        ax_btn2 = _clean_control_ax(self.fig.add_subplot(self.gs_hbtns[1]))
-        self.btn_preset2 = Button(ax_btn2, "Grating (CD)", color="#161c24", hovercolor="#242c38")
+        self.btn_preset2 = Button(self.fig.add_subplot(self.gs_hbtns[1]), "Grating (CD)", color="#161c24", hovercolor="#242c38")
         self.btn_preset2.label.set_fontsize(7.5)
         self.btn_preset2.label.set_color("#e6edf3")
         self.btn_preset2.on_clicked(lambda _e: self.apply_preset("Diffraction grating"))
 
-        ax_btn3 = _clean_control_ax(self.fig.add_subplot(self.gs_hbtns[2]))
-        self.btn_preset3 = Button(ax_btn3, "Blazed Spec", color="#161c24", hovercolor="#242c38")
+        self.btn_preset3 = Button(self.fig.add_subplot(self.gs_hbtns[2]), "Blazed Spec", color="#161c24", hovercolor="#242c38")
         self.btn_preset3.label.set_fontsize(7.5)
         self.btn_preset3.label.set_color("#e6edf3")
         self.btn_preset3.on_clicked(lambda _e: self.apply_preset("Blazed spectrometer"))
 
-        ax_btn4 = _clean_control_ax(self.fig.add_subplot(self.gs_hbtns[3]))
-        self.btn_talbot = Button(ax_btn4, "Talbot 2D", color="#064e3b", hovercolor="#047857")
+        self.btn_talbot = Button(self.fig.add_subplot(self.gs_hbtns[3]), "Talbot 2D", color="#064e3b", hovercolor="#047857")
         self.btn_talbot.label.set_fontsize(7.5)
         self.btn_talbot.label.set_fontweight("bold")
         self.btn_talbot.label.set_color("#34d399")
         self.btn_talbot.on_clicked(self.open_talbot_window)
 
-        ax_btn5 = _clean_control_ax(self.fig.add_subplot(self.gs_hbtns[4]))
-        self.btn_reset = Button(ax_btn5, "Reset", color="#2c1517", hovercolor="#4c1d24")
+        self.btn_reset = Button(self.fig.add_subplot(self.gs_hbtns[4]), "Reset", color="#2c1517", hovercolor="#4c1d24")
         self.btn_reset.label.set_fontsize(7.5)
         self.btn_reset.label.set_fontweight("bold")
         self.btn_reset.label.set_color("#fca5a5")
@@ -700,12 +408,12 @@ class GratingLabApp:
         # ─────────────────────────────────────────────────────────────
         gs_c0 = self.gs_controls[0].subgridspec(5, 1, height_ratios=[0.38, 1.7, 0.35, 0.95, 0.58], hspace=0.22)
 
-        ax_h0 = _clean_control_ax(self.fig.add_subplot(gs_c0[0]))
+        ax_h0 = self.fig.add_subplot(gs_c0[0])
         ax_h0.axis("off")
         ax_h0.text(0.0, 0.85, "SECTION 01 // GRATING PROFILE", fontsize=8.5, fontweight="bold", color="#38bdf8", family="monospace")
         ax_h0.text(0.0, 0.1, "Aperture modulation function", fontsize=7.5, color="#64748b")
 
-        ax_radio = _clean_control_ax(self.fig.add_subplot(gs_c0[1], facecolor="#11161d"))
+        ax_radio = self.fig.add_subplot(gs_c0[1], facecolor="#11161d")
         for spine in ax_radio.spines.values():
             spine.set_color("#242c38")
             spine.set_linewidth(0.8)
@@ -719,11 +427,11 @@ class GratingLabApp:
         self.radio_type.on_clicked(self.on_type)
         self._update_radio_styling()
 
-        ax_h0_sub = _clean_control_ax(self.fig.add_subplot(gs_c0[2]))
+        ax_h0_sub = self.fig.add_subplot(gs_c0[2])
         ax_h0_sub.axis("off")
         ax_h0_sub.text(0.0, 0.1, "VIEW MODES:", fontsize=8, fontweight="bold", color="#8b949e", family="monospace")
 
-        ax_checks = _clean_control_ax(self.fig.add_subplot(gs_c0[3], facecolor="#11161d"))
+        ax_checks = self.fig.add_subplot(gs_c0[3], facecolor="#11161d")
         for spine in ax_checks.spines.values():
             spine.set_color("#242c38")
             spine.set_linewidth(0.8)
@@ -736,7 +444,7 @@ class GratingLabApp:
         self.check_toggles.on_clicked(self.on_toggle)
         self._update_check_styling()
 
-        ax_p_hint = _clean_control_ax(self.fig.add_subplot(gs_c0[4]))
+        ax_p_hint = self.fig.add_subplot(gs_c0[4])
         ax_p_hint.axis("off")
         self.lbl_profile_telemetry = ax_p_hint.text(
             0.0, 0.9, "",
@@ -748,7 +456,7 @@ class GratingLabApp:
         # ─────────────────────────────────────────────────────────────
         gs_c1 = self.gs_controls[1].subgridspec(6, 1, height_ratios=[0.38, 0.82, 0.82, 0.82, 0.82, 0.58], hspace=0.25)
 
-        ax_h1 = _clean_control_ax(self.fig.add_subplot(gs_c1[0]))
+        ax_h1 = self.fig.add_subplot(gs_c1[0])
         ax_h1.axis("off")
         ax_h1.text(0.0, 0.85, "SECTION 02 // LASER EMITTER", fontsize=8.5, fontweight="bold", color="#f97316", family="monospace")
         ax_h1.text(0.0, 0.1, "Coherent laser source excitation", fontsize=7.5, color="#64748b")
@@ -766,7 +474,7 @@ class GratingLabApp:
             gs_c1[4], "SCREEN DISTANCE L", 0.10, 2.00, self.screen_dist, 0.02, "%0.2f m", "#f97316"
         )
 
-        ax_l_telemetry = _clean_control_ax(self.fig.add_subplot(gs_c1[5]))
+        ax_l_telemetry = self.fig.add_subplot(gs_c1[5])
         ax_l_telemetry.axis("off")
         self.lbl_laser_telemetry = ax_l_telemetry.text(
             0.0, 0.9, "",
@@ -778,7 +486,7 @@ class GratingLabApp:
         # ─────────────────────────────────────────────────────────────
         gs_c2 = self.gs_controls[2].subgridspec(6, 1, height_ratios=[0.38, 0.82, 0.82, 0.82, 0.82, 0.58], hspace=0.25)
 
-        ax_h2 = _clean_control_ax(self.fig.add_subplot(gs_c2[0]))
+        ax_h2 = self.fig.add_subplot(gs_c2[0])
         ax_h2.axis("off")
         ax_h2.text(0.0, 0.85, "SECTION 03 // GRATING STRUCTURE", fontsize=8.5, fontweight="bold", color="#14b8a6", family="monospace")
         ax_h2.text(0.0, 0.1, "Microstructure pitch & substrate material", fontsize=7.5, color="#64748b")
@@ -801,7 +509,7 @@ class GratingLabApp:
             gs_c2[4], "PHASE DEPTH φ₀", 0.10, 4.0 * math.pi, self.phase_depth, 0.05, "%0.2f rad", "#14b8a6"
         )
 
-        ax_g_telemetry = _clean_control_ax(self.fig.add_subplot(gs_c2[5]))
+        ax_g_telemetry = self.fig.add_subplot(gs_c2[5])
         ax_g_telemetry.axis("off")
         self.lbl_grating_telemetry = ax_g_telemetry.text(
             0.0, 0.9, "",
@@ -813,7 +521,7 @@ class GratingLabApp:
         # ─────────────────────────────────────────────────────────────
         gs_c3 = self.gs_controls[3].subgridspec(2, 1, height_ratios=[0.38, 3.86], hspace=0.08)
 
-        ax_h3 = _clean_control_ax(self.fig.add_subplot(gs_c3[0]))
+        ax_h3 = self.fig.add_subplot(gs_c3[0])
         ax_h3.axis("off")
         ax_h3.text(0.0, 0.85, "SECTION 04 // OPTICAL TELEMETRY", fontsize=8.5, fontweight="bold", color="#38bdf8", family="monospace")
         ax_h3.text(0.0, 0.1, "Real-time Fraunhofer order analysis", fontsize=7.5, color="#64748b")
@@ -848,7 +556,6 @@ class GratingLabApp:
             self.ax_duty_track.set_visible(True)
 
         self._update_radio_styling()
-        self._update_fft_legend()
 
         profile_hints = {
             "Binary Amplitude": "Mechanism: Spatial amplitude mask\nSubstrate: Transmissive optical window",
@@ -867,7 +574,6 @@ class GratingLabApp:
         self.log_scale = status[0]
         self.compare_analytical = status[1]
         self._update_check_styling()
-        self._update_fft_legend()
         if not self._bulk_updating:
             self._set_active_preset(None)
             self.update(None)
@@ -1027,7 +733,7 @@ class GratingLabApp:
 
         self.on_type(self.grating_type)
 
-    def update(self, _val=None, full_draw: bool = False, fast_mode: bool = False) -> None:
+    def update(self, _val=None) -> None:
         """Perform exact wave-optics calculation, update research-grade plots, and telemetry terminal."""
         if self._bulk_updating:
             return
@@ -1144,35 +850,37 @@ class GratingLabApp:
         t_illuminated = t_raw * aperture_mask * incident_beam
 
         # ─── 1. Channel 1: Aperture Plane Transmittance & Phase ───
+        self.ax_profile.clear()
+        self.ax_profile.set_facecolor("#11161d")
         x_um = grid.x * 1e6
         crop_mask = np.abs(grid.x) <= (4.0 * self.period)
-        xc = x_um[crop_mask]
-        t_mag = np.abs(t_raw)[crop_mask]
-        t_phase = np.angle(t_raw)[crop_mask] / math.pi
-        beam_mag = np.abs(incident_beam)[crop_mask]
         d_um = self.period * 1e6
 
-        verts_prof = np.column_stack([np.concatenate([xc, xc[::-1]]), np.concatenate([np.zeros_like(t_mag), t_mag[::-1]])])
-        self.poly_trans_fill.set_verts([verts_prof])
-
-        self.line_trans_mag.set_data(xc, t_mag)
-        self.line_trans_phase.set_data(xc, t_phase)
-        self.line_trans_beam.set_data(xc, beam_mag)
-        self.ax_profile.set_xlim(xc[0], xc[-1])
+        # Shaded magnitude area fill & sharp outline
+        self.ax_profile.fill_between(x_um[crop_mask], 0, np.abs(t_raw)[crop_mask], color="#14b8a6", alpha=0.18, label="|t(x)| Magnitude")
+        self.ax_profile.plot(x_um[crop_mask], np.abs(t_raw)[crop_mask], color="#2dd4bf", lw=1.8)
+        self.ax_profile.plot(x_um[crop_mask], np.angle(t_raw)[crop_mask] / math.pi, color="#f97316", ls="--", lw=1.4, label="Phase φ(x) / π")
+        self.ax_profile.plot(x_um[crop_mask], np.abs(incident_beam)[crop_mask], color="#94a3b8", ls=":", lw=1.2, alpha=0.75, label="Beam Envelope w₀")
 
         # Period dimension annotation bracket
         if 0.5 <= d_um <= (np.sum(crop_mask) * (grid.dx * 1e6)):
-            self.ann_period.xy = (0.0, 1.08)
-            self.ann_period.set_position((d_um, 1.08))
-            self.ann_period.set_visible(True)
-            self.ann_period_txt.set_position((d_um / 2.0, 1.12))
-            self.ann_period_txt.set_text(f"d = {d_um:.2f} µm")
-            self.ann_period_txt.set_visible(True)
-        else:
-            self.ann_period.set_visible(False)
-            self.ann_period_txt.set_visible(False)
+            self.ax_profile.annotate(
+                "", xy=(0.0, 1.08), xytext=(d_um, 1.08),
+                arrowprops=dict(arrowstyle="<->", color="#38bdf8", lw=1.0)
+            )
+            self.ax_profile.text(
+                d_um / 2.0, 1.12, f"d = {d_um:.2f} µm",
+                ha="center", va="bottom", fontsize=7.5, color="#38bdf8", family="monospace", fontweight="bold"
+            )
 
-        self.title_profile.set_text(f"CH1 // APERTURE TRANSMITTANCE [{self.grating_type.upper()}]")
+        self.ax_profile.set_title(f"CH1 // APERTURE TRANSMITTANCE [{self.grating_type.upper()}]", fontsize=9, fontweight="bold", color="#e6edf3", pad=10, loc="left")
+        self.ax_profile.set_xlabel("Transverse Coordinate x [µm]", fontsize=8, color="#8b949e", labelpad=2)
+        self.ax_profile.set_ylabel("Field Amplitude / Phase (rad/π)", fontsize=8, color="#8b949e")
+        self.ax_profile.set_ylim(-1.15, 1.28)
+        self.ax_profile.grid(True, linestyle=":", color="#212936", alpha=0.8)
+        leg1 = self.ax_profile.legend(loc="upper right", fontsize=7.2, facecolor="#161c24", edgecolor="#2c3543")
+        for text in leg1.get_texts():
+            text.set_color("#e6edf3")
 
         # ─── 2. Channel 2: Far-Field Fraunhofer Diffraction Spectrum ───
         sin_theta, intensity, theta_deg = propagation.far_field_fft(
@@ -1182,12 +890,14 @@ class GratingLabApp:
             pad_factor=2,
         )
         theta_rad_dense = np.radians(theta_deg)
+
+        self.ax_fft.clear()
+        self.ax_fft.set_facecolor("#11161d")
         y_data = np.maximum(intensity, 1e-4) if self.log_scale else intensity
 
-        base_y = 1e-4 if self.log_scale else 0.0
-        verts_fft = np.column_stack([np.concatenate([theta_deg, theta_deg[::-1]]), np.concatenate([np.full_like(y_data, base_y), y_data[::-1]])])
-        self.poly_fft_fill.set_verts([verts_fft])
-        self.line_fft.set_data(theta_deg, y_data)
+        # Spectrum area fill & primary trace
+        self.ax_fft.fill_between(theta_deg, 1e-4 if self.log_scale else 0, y_data, color="#10b981", alpha=0.12)
+        self.ax_fft.plot(theta_deg, y_data, label="Numerical FFT", color="#10b981", lw=1.6)
 
         # Analytical multi-slit model
         if self.compare_analytical and self.grating_type == "Binary Amplitude":
@@ -1200,18 +910,13 @@ class GratingLabApp:
                 theta_i=self.theta_i,
             )
             y_analytical = np.maximum(i_analytical, 1e-4) if self.log_scale else i_analytical
-            self.line_analytical.set_data(theta_deg, y_analytical)
-            self.line_analytical.set_visible(True)
+            self.ax_fft.plot(theta_deg, y_analytical, label="Analytical N-Slit", color="#f59e0b", ls=":", lw=1.3)
 
             # Single-slit diffraction envelope sinc²(β)
             beta_norm = (a / self.wavelength) * np.sin(theta_rad_dense)
             sinc_sq = np.sinc(beta_norm)**2
             y_env = np.maximum(sinc_sq, 1e-4) if self.log_scale else sinc_sq
-            self.line_envelope.set_data(theta_deg, y_env)
-            self.line_envelope.set_visible(True)
-        else:
-            self.line_analytical.set_visible(False)
-            self.line_envelope.set_visible(False)
+            self.ax_fft.plot(theta_deg, y_env, label="Slit Envelope sinc²(β)", color="#64748b", ls="-.", lw=1.1, alpha=0.8)
 
         # Propagating diffraction orders
         orders, evanescent = analytical.order_angles(
@@ -1220,113 +925,96 @@ class GratingLabApp:
             theta_i=self.theta_i,
             m_max=4,
         )
-        order_items = sorted(orders.items(), key=lambda it: it[0])
-        idx_o = 0
-        peak_pts = []
-        marker_colors = []
-
-        for m, ang_rad in order_items:
+        for m, ang_rad in orders.items():
             ang_d = math.degrees(ang_rad)
             if -48.0 <= ang_d <= 48.0:
-                if idx_o < len(self.vline_orders_pool):
-                    vl = self.vline_orders_pool[idx_o]
-                    vl.set_xdata([ang_d, ang_d])
-                    vl.set_visible(True)
-
-                    txt = self.txt_orders_pool[idx_o]
-                    txt.set_position((ang_d, 1.01))
-                    txt.set_text(f"m={m:+d}" if m != 0 else "m=0")
-                    txt.set_visible(True)
-                    idx_o += 1
-
+                self.ax_fft.axvline(ang_d, color="#334155", linestyle="--", alpha=0.6, lw=0.9)
+                self.ax_fft.text(
+                    ang_d,
+                    1.01,
+                    f"m={m:+d}" if m != 0 else "m=0",
+                    transform=self.ax_fft.get_xaxis_transform(),
+                    fontsize=8,
+                    ha="center",
+                    va="bottom",
+                    color="#38bdf8",
+                    fontweight="bold",
+                    family="monospace",
+                )
                 # Diffraction peak tip marker
                 peak_idx = np.argmin(np.abs(theta_deg - ang_d))
                 peak_val = y_data[peak_idx]
                 if peak_val > (1e-3 if self.log_scale else 0.05):
-                    col = "#f97316" if (self.grating_type == "Blazed Phase" and m == 1) else "#38bdf8"
-                    peak_pts.append([ang_d, peak_val])
-                    marker_colors.append(col)
-
-        for j in range(idx_o, len(self.vline_orders_pool)):
-            self.vline_orders_pool[j].set_visible(False)
-            self.txt_orders_pool[j].set_visible(False)
-
-        if peak_pts:
-            self.scatter_peaks.set_offsets(np.array(peak_pts))
-            self.scatter_peaks.set_color(marker_colors)
-            self.scatter_peaks.set_visible(True)
-        else:
-            self.scatter_peaks.set_offsets(np.empty((0, 2)))
-            self.scatter_peaks.set_visible(False)
+                    marker_col = "#f97316" if (self.grating_type == "Blazed Phase" and m == 1) else "#38bdf8"
+                    self.ax_fft.scatter(ang_d, peak_val, color=marker_col, s=18, zorder=4, edgecolor="#0b0f14", linewidth=0.5)
 
         # Suppressed missing orders markers (e.g. m = ±2)
-        missing_pts = []
-        missing_labels = []
         if self.grating_type == "Binary Amplitude":
             missing_list = analytical.missing_orders(self.period, a)
             for m_miss in missing_list:
                 if m_miss in orders:
                     ang_miss_d = math.degrees(orders[m_miss])
                     if -48.0 <= ang_miss_d <= 48.0:
-                        missing_pts.append([ang_miss_d, 1e-4 if self.log_scale else 0.0])
-                        missing_labels.append(m_miss)
+                        self.ax_fft.scatter(ang_miss_d, 1e-4 if self.log_scale else 0.0, marker="x", color="#ef4444", s=22, zorder=5, lw=1.2)
+                        self.ax_fft.text(
+                            ang_miss_d, 2e-4 if self.log_scale else 0.04, f"m={m_miss:+} (0)",
+                            ha="center", va="bottom", fontsize=6.8, color="#ef4444", family="monospace"
+                        )
 
-        if missing_pts:
-            self.scatter_missing.set_offsets(np.array(missing_pts))
-            self.scatter_missing.set_visible(True)
+        self.ax_fft.set_title("CH2 // FAR-FIELD FRAUNHOFER DIFFRACTION SPECTRUM", fontsize=9, fontweight="bold", color="#e6edf3", pad=10, loc="left")
+        self.ax_fft.set_xlabel("Diffraction Angle θ [deg]", fontsize=8, color="#8b949e", labelpad=2)
+        self.ax_fft.set_ylabel("Relative Log Irradiance log₁₀(I / I₀)" if self.log_scale else "Normalized Spectral Irradiance I(θ)", fontsize=8, color="#8b949e")
+        self.ax_fft.set_xlim(-50.0, 50.0)
+        if self.log_scale:
+            self.ax_fft.set_yscale("log")
+            self.ax_fft.set_ylim(1e-4, 1.25)
         else:
-            self.scatter_missing.set_offsets(np.empty((0, 2)))
-            self.scatter_missing.set_visible(False)
-
-        for i, txt in enumerate(self.txt_missing_pool):
-            if i < len(missing_pts):
-                ang_miss_d, _ = missing_pts[i]
-                m_miss = missing_labels[i]
-                txt.set_position((ang_miss_d, 2e-4 if self.log_scale else 0.04))
-                txt.set_text(f"m={m_miss:+} (0)")
-                txt.set_visible(True)
-            else:
-                txt.set_visible(False)
+            self.ax_fft.set_ylim(-0.02, 1.08)
+        self.ax_fft.grid(True, linestyle=":", color="#212936", alpha=0.8)
+        leg2 = self.ax_fft.legend(loc="upper right", fontsize=7.2, facecolor="#161c24", edgecolor="#2c3543")
+        for text in leg2.get_texts():
+            text.set_color("#e6edf3")
 
         # ─── 3. Detector Array: Simulated Screen Pattern ───
+        self.ax_screen.clear()
         screen_y_cm = propagation.sin_theta_to_screen_position(np.radians(theta_deg), self.screen_dist) * 100.0
-        y_screen_linear = np.linspace(-30.0, 30.0, 400)
+        y_screen_linear = np.linspace(-30.0, 30.0, 600)
         i_screen = np.interp(y_screen_linear, screen_y_cm, intensity, left=0.0, right=0.0)
 
         # Realistic Gaussian vertical cross-section for laser spots
-        y_vert = np.linspace(-1.0, 1.0, 25)[:, np.newaxis]
+        y_vert = np.linspace(-1.0, 1.0, 35)[:, np.newaxis]
         strip_2d = np.exp(-y_vert**2 / 0.35) * i_screen[np.newaxis, :]
 
         laser_cmap = get_laser_colormap(self.s_wl.val)
-        self.im_screen.set_data(strip_2d)
-        self.im_screen.set_cmap(laser_cmap)
+        self.ax_screen.imshow(
+            strip_2d,
+            extent=[-30.0, 30.0, -1.5, 1.5],
+            cmap=laser_cmap,
+            aspect="auto",
+            origin="lower",
+        )
 
-        screen_pts = []
-        idx_s = 0
-        for m, ang_rad in order_items:
+        # Spot location pointer triangles
+        for m, ang_rad in orders.items():
             y_m = self.screen_dist * math.tan(ang_rad) * 100.0
             if -28.0 <= y_m <= 28.0:
-                screen_pts.append([y_m, 1.35])
-                if idx_s < len(self.txt_screen_pool):
-                    txt = self.txt_screen_pool[idx_s]
-                    txt.set_position((y_m, 1.48))
-                    txt.set_text(f"m={m:+d}" if m != 0 else "m=0")
-                    txt.set_visible(True)
-                    idx_s += 1
+                self.ax_screen.scatter(y_m, 1.35, marker="v", color="#38bdf8", s=16, zorder=5)
+                self.ax_screen.text(
+                    y_m, 1.48, f"m={m:+d}" if m != 0 else "m=0",
+                    ha="center", va="bottom", fontsize=6.8, color="#38bdf8", family="monospace"
+                )
 
-        if screen_pts:
-            self.scatter_screen_pointers.set_offsets(np.array(screen_pts))
-            self.scatter_screen_pointers.set_visible(True)
-        else:
-            self.scatter_screen_pointers.set_offsets(np.empty((0, 2)))
-            self.scatter_screen_pointers.set_visible(False)
-
-        for j in range(idx_s, len(self.txt_screen_pool)):
-            self.txt_screen_pool[j].set_visible(False)
-
-        self.title_screen.set_text(
-            f"DETECTOR ARRAY // SIMULATED SCREEN PATTERN (L = {self.screen_dist:.2f} m  |  λ = {int(self.s_wl.val)} nm  |  y = L·tan θ)"
+        self.ax_screen.set_title(
+            f"DETECTOR ARRAY // SIMULATED SCREEN PATTERN (L = {self.screen_dist:.2f} m  |  λ = {int(self.s_wl.val)} nm  |  y = L·tan θ)",
+            fontsize=8.5,
+            fontweight="bold",
+            color="#e6edf3",
+            pad=8,
+            loc="left",
         )
+        self.ax_screen.set_xlabel("Transverse Screen Displacement y [cm] (Metric Scale)", fontsize=8, color="#8b949e", labelpad=2)
+        self.ax_screen.set_ylim(-1.5, 2.0)
+        self.ax_screen.set_yticks([])
 
         # ─── 4. Bloomberg Telemetry Terminal Feed ───
         z_t_um = (2.0 * self.period**2 / self.wavelength) * 1e6
@@ -1365,13 +1053,7 @@ class GratingLabApp:
             telemetry_lines.append("EVANESCENT     : All modeled orders propagate")
 
         self.term_text.set_text("\n".join(telemetry_lines))
-
-        if fast_mode and not full_draw:
-            did_blit = self._fast_draw()
-            if not did_blit:
-                self.fig.canvas.draw_idle()
-        else:
-            self.fig.canvas.draw_idle()
+        self.fig.canvas.draw_idle()
 
     def open_talbot_window(self, _event=None) -> None:
         """Launch the near-field Talbot carpet simulation in a dark research-grade window."""
@@ -1381,7 +1063,7 @@ class GratingLabApp:
         ax_t = fig_t.add_subplot(111, facecolor="#11161d")
 
         z_t = analytical.talbot_distance(self.period, self.wavelength)
-        grid = gratings.Grid1D(width=20.0 * self.period, num_samples=1024)
+        grid = gratings.Grid1D(width=20.0 * self.period, num_samples=2048)
         t_grating = gratings.binary_amplitude(grid.x, d=self.period, a=self.duty * self.period)
 
         x, z_arr, carpet = propagation.talbot_carpet(
@@ -1389,7 +1071,7 @@ class GratingLabApp:
             dx=grid.dx,
             wavelength=self.wavelength,
             d=self.period,
-            n_z_steps=180,
+            n_z_steps=250,
             z_max=2.0 * z_t,
         )
 
