@@ -209,7 +209,7 @@ GratingLab provides three end-to-end industrial characterization modules execute
 | **Case Study 1: Thermal Strain Sensing** | **Case Study 2: Groove Depth Profilometry** | **Case Study 3: 2D Lattice Metrology** |
 | :---: | :---: | :---: |
 | <img src="examples/outputs/case_study_1_strain_temperature.png" alt="Thermal Strain Sensing" width="310"> | <img src="examples/outputs/case_study_2_groove_depth.png" alt="Groove Depth Profilometry" width="310"> | <img src="examples/outputs/case_study_3_2d_lattice.png" alt="2D Lattice Metrology" width="310"> |
-| *Inverse grating pitch shift tracking thermal expansion coefficient $\alpha$.* | *Zero-order suppression and phase depth extraction for semiconductor etching.* | *2D orthogonal Fourier diffraction mapping for photonic crystals and 2D materials.* |
+| *Inverse grating pitch shift tracking thermal expansion coefficient α.* | *Zero-order suppression and phase depth extraction for semiconductor etching.* | *2D orthogonal Fourier diffraction mapping for photonic crystals and 2D materials.* |
 
 
 ---
