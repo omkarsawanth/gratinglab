@@ -14,11 +14,19 @@ import argparse
 import os
 import sys
 
-# Ensure an interactive backend is used for desktop GUI rendering
+# Ensure an interactive backend is used for desktop GUI rendering if not in headless mode
 import matplotlib
-if matplotlib.get_backend().lower() in ("agg", "template", "pdf", "ps", "svg"):
-    for _backend in ["TkAgg", "QtAgg", "Qt5Agg", "WXAgg"]:
+if os.environ.get("MPLBACKEND", "").lower() != "agg" and matplotlib.get_backend().lower() in ("agg", "template", "pdf", "ps", "svg"):
+    for _backend in ["QtAgg", "TkAgg", "Qt5Agg", "WXAgg"]:
         try:
+            if _backend == "QtAgg":
+                import PyQt6
+            elif _backend == "TkAgg":
+                import tkinter
+            elif _backend == "Qt5Agg":
+                import PyQt5
+            elif _backend == "WXAgg":
+                import wx
             matplotlib.use(_backend, force=True)
             break
         except Exception:
@@ -63,6 +71,13 @@ def parse_arguments() -> argparse.Namespace:
         default=0.5,
         help="Distance from grating to observation screen in meters.",
     )
+    parser.add_argument(
+        "--refractive-index",
+        "-n",
+        type=float,
+        default=1.50,
+        help="Grating substrate refractive index n (1.00 - 2.50).",
+    )
     return parser.parse_args()
 
 
@@ -85,6 +100,7 @@ def main() -> None:
     print(f"  Grating Pitch d:   {args.period:.2f} µm")
     print(f"  Illuminated Slits: {args.slits}")
     print(f"  Screen Distance:   {args.screen_dist:.2f} m")
+    print(f"  Refractive Index:  {args.refractive_index:.2f}")
     print("=" * 70)
 
     visualize.launch_interactive_app(
@@ -93,6 +109,7 @@ def main() -> None:
         period_um=args.period,
         n_slits=args.slits,
         screen_dist_m=args.screen_dist,
+        n_index=args.refractive_index,
     )
 
 

@@ -1140,6 +1140,7 @@ def launch_interactive_app(
     period_um: float = 1.6,
     n_slits: int = 10,
     screen_dist_m: float = 0.5,
+    n_index: float = 1.50,
 ) -> None:
     current_backend = matplotlib.get_backend().lower()
     if current_backend in ("agg", "template", "pdf", "ps", "svg"):
@@ -1156,5 +1157,6 @@ def launch_interactive_app(
         period_um=period_um,
         n_slits=n_slits,
         screen_dist_m=screen_dist_m,
+        n_index=n_index,
     )
     plt.show()
