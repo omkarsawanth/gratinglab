@@ -109,6 +109,30 @@ def get_laser_colormap(wavelength_nm: float) -> LinearSegmentedColormap:
     return LinearSegmentedColormap.from_list(f"laser_{int(wavelength_nm)}", colors, N=256)
 
 
+def get_material_info(n: float) -> tuple[str, float]:
+    """Return substrate material identification and normal-incidence Fresnel transmission."""
+    if n <= 1.01:
+        name = "Vacuum / Air"
+    elif n < 1.36:
+        name = "Water / Cryolite"
+    elif n < 1.48:
+        name = "Fused Silica"
+    elif n < 1.54:
+        name = "Crown Glass (BK7)"
+    elif n < 1.62:
+        name = "Polycarbonate"
+    elif n < 1.72:
+        name = "Dense Flint Glass"
+    elif n < 1.85:
+        name = "Sapphire (Al₂O₃)"
+    else:
+        name = "Diamond / High-Index"
+
+    r_fresnel = ((n - 1.0) / (n + 1.0)) ** 2 if n >= 1.0 else 0.0
+    t_fresnel = max(0.0, 1.0 - r_fresnel)
+    return name, t_fresnel
+
+
 class GratingLabApp:
     def __init__(
         self,
@@ -117,6 +141,7 @@ class GratingLabApp:
         period_um: float = 1.6,
         n_slits: int = 10,
         screen_dist_m: float = 0.5,
+        n_index: float = 1.50,
     ) -> None:
         # Default snapshot for the Reset button
         self.default_params = {
@@ -125,6 +150,7 @@ class GratingLabApp:
             "period_um": period_um,
             "n_slits": n_slits,
             "screen_dist_m": screen_dist_m,
+            "n_index": n_index,
             "duty": 0.5,
             "theta_i_deg": 0.0,
             "beam_waist_um": 40.0,
@@ -137,6 +163,7 @@ class GratingLabApp:
         self.grating_type = grating_type
         self.wavelength = wavelength_nm * 1e-9
         self.period = period_um * 1e-6
+        self.n_index = n_index
         self.duty = 0.5
         self.n_slits = n_slits
         self.theta_i = 0.0
@@ -147,6 +174,12 @@ class GratingLabApp:
         self.compare_analytical = True
         self.num_samples = 2048
 
+        # Interactive state & performance guards
+        self._bulk_updating = False
+        self._last_sim_params = None
+        self._last_log_scale = False
+        self._active_preset_idx = None
+
         self.build_layout()
         self.build_controls()
         self.on_type(self.grating_type)
@@ -155,7 +188,8 @@ class GratingLabApp:
         """Create pure GridSpec dark scientific dashboard architecture without manual coordinates."""
         plt.style.use("dark_background")
         self.fig = plt.figure(figsize=(16, 9.5), dpi=100, facecolor="#0b0f14")
-        self.fig.canvas.manager.set_window_title("GratingLab // Precision Optical Metrology & Diffraction Studio")
+        if hasattr(self.fig.canvas, "manager") and self.fig.canvas.manager is not None:
+            self.fig.canvas.manager.set_window_title("GratingLab // Precision Optical Metrology & Diffraction Studio")
 
         # 4 Primary Vertical Tiers:
         # Tier 0: Instrument Navigation & Quick Preset Bar
@@ -223,38 +257,112 @@ class GratingLabApp:
         valfmt: str,
         accent_color: str,
     ):
-        """Construct a high-density, collision-free dark scientific slider."""
-        gs_item = cell.subgridspec(2, 1, height_ratios=[0.45, 0.55], hspace=0.1)
+        """Construct a high-density, tactile laboratory slider with dedicated live readout."""
+        gs_item = cell.subgridspec(2, 1, height_ratios=[0.42, 0.58], hspace=0.1)
 
         ax_lbl = self.fig.add_subplot(gs_item[0])
         ax_lbl.axis("off")
-        ax_lbl.text(0.0, 0.1, title, fontsize=8.2, fontweight="bold", color="#8b949e", ha="left", va="bottom", family="monospace")
-        val_txt = ax_lbl.text(1.0, 0.1, valfmt % valinit, fontsize=8.5, fontweight="bold", color=accent_color, ha="right", va="bottom", family="monospace")
+        ax_lbl.text(0.0, 0.1, title, fontsize=8.0, fontweight="bold", color="#8b949e", ha="left", va="bottom", family="monospace")
+        val_txt = ax_lbl.text(1.0, 0.1, valfmt % valinit, fontsize=8.3, fontweight="bold", color=accent_color, ha="right", va="bottom", family="monospace")
 
         ax_track = self.fig.add_subplot(gs_item[1], facecolor="#161c24")
         for spine in ax_track.spines.values():
             spine.set_color("#242c38")
-            spine.set_linewidth(0.6)
+            spine.set_linewidth(0.8)
 
-        slider = Slider(
-            ax_track,
-            "",
-            valmin,
-            valmax,
-            valinit=valinit,
-            valstep=valstep,
-            color=accent_color,
-            track_color="#161c24",
-            initcolor="none",
-        )
+        slider_kwargs = {
+            "valinit": valinit,
+            "valstep": valstep,
+            "color": accent_color,
+            "track_color": "#161c24",
+            "initcolor": "none",
+        }
+        try:
+            slider = Slider(
+                ax_track,
+                "",
+                valmin,
+                valmax,
+                handle_style={"facecolor": "#ffffff", "edgecolor": accent_color, "size": 9},
+                **slider_kwargs,
+            )
+        except TypeError:
+            slider = Slider(ax_track, "", valmin, valmax, **slider_kwargs)
+
         slider.valtext.set_visible(False)
 
         def on_change(val):
             val_txt.set_text(valfmt % val)
-            self.update(None)
+            if not self._bulk_updating:
+                self._set_active_preset(None)
+                self.update(None)
 
         slider.on_changed(on_change)
         return slider, ax_lbl, ax_track, val_txt
+
+    def _set_active_preset(self, active_idx: int | None) -> None:
+        """Update top preset buttons to indicate selected active preset state."""
+        self._active_preset_idx = active_idx
+        preset_btns = [self.btn_preset1, self.btn_preset2, self.btn_preset3]
+        for i, btn in enumerate(preset_btns):
+            if active_idx is not None and i == active_idx:
+                btn.color = "#0f4a47"
+                btn.hovercolor = "#115e59"
+                btn.ax.set_facecolor("#0f4a47")
+                btn.label.set_color("#2dd4bf")
+                btn.label.set_fontweight("bold")
+                for spine in btn.ax.spines.values():
+                    spine.set_color("#2dd4bf")
+                    spine.set_linewidth(1.2)
+            else:
+                btn.color = "#161c24"
+                btn.hovercolor = "#242c38"
+                btn.ax.set_facecolor("#161c24")
+                btn.label.set_color("#8b949e")
+                btn.label.set_fontweight("normal")
+                for spine in btn.ax.spines.values():
+                    spine.set_color("#242c38")
+                    spine.set_linewidth(0.8)
+        self.fig.canvas.draw_idle()
+
+    def _update_radio_styling(self) -> None:
+        """Update radio buttons to highlight the active grating profile."""
+        types = ["Binary Amplitude", "Sinusoidal Phase", "Blazed Phase", "2D Orthogonal"]
+        active_idx = types.index(self.grating_type) if self.grating_type in types else 0
+        for i, lbl in enumerate(self.radio_type.labels):
+            if i == active_idx:
+                lbl.set_color("#2dd4bf")
+                lbl.set_fontweight("bold")
+                lbl.set_fontsize(8.2)
+            else:
+                lbl.set_color("#8b949e")
+                lbl.set_fontweight("normal")
+                lbl.set_fontsize(8.0)
+        try:
+            edge_colors = ["#14b8a6" if i == active_idx else "#242c38" for i in range(len(types))]
+            face_colors = ["#042f2e" if i == active_idx else "#161c24" for i in range(len(types))]
+            self.radio_type.set_radio_props({"edgecolor": edge_colors, "facecolor": face_colors})
+        except Exception:
+            pass
+
+    def _update_check_styling(self) -> None:
+        """Update check buttons to illuminate active visualization toggles."""
+        statuses = [self.log_scale, self.compare_analytical]
+        for i, lbl in enumerate(self.check_toggles.labels):
+            if statuses[i]:
+                lbl.set_color("#38bdf8")
+                lbl.set_fontweight("bold")
+            else:
+                lbl.set_color("#64748b")
+                lbl.set_fontweight("normal")
+        try:
+            edge_colors = ["#38bdf8" if s else "#242c38" for s in statuses]
+            face_colors = ["#082f49" if s else "#161c24" for s in statuses]
+            check_colors = ["#38bdf8" if s else "#242c38" for s in statuses]
+            self.check_toggles.set_frame_props({"edgecolor": edge_colors, "facecolor": face_colors})
+            self.check_toggles.set_check_props({"color": check_colors})
+        except Exception:
+            pass
 
     def build_controls(self) -> None:
         """Construct the top preset bar, 3 instrument control decks, and real-time telemetry terminal."""
@@ -265,7 +373,7 @@ class GratingLabApp:
         self.ax_head_brand.text(0.0, 0.15, "SYS-ID: GL-650X-PRO  |  PRECISION OPTICAL METROLOGY", fontsize=7.6, color="#8b949e", family="monospace")
 
         self.lbl_head_status = self.ax_head_status.text(0.5, 0.85, "● SYSTEM ONLINE", fontsize=8.8, fontweight="bold", color="#10b981", family="monospace", ha="center")
-        self.lbl_head_telemetry = self.ax_head_status.text(0.5, 0.15, "LIVE // λ = 650 nm | d = 1.60 µm", fontsize=7.6, color="#64748b", family="monospace", ha="center")
+        self.lbl_head_telemetry = self.ax_head_status.text(0.5, 0.15, "LIVE // λ = 650 nm | d = 1.60 µm | n = 1.50", fontsize=7.6, color="#64748b", family="monospace", ha="center")
 
         # Top Instrument Action Buttons
         self.btn_preset1 = Button(self.fig.add_subplot(self.gs_hbtns[0]), "Single Slit", color="#161c24", hovercolor="#242c38")
@@ -283,10 +391,10 @@ class GratingLabApp:
         self.btn_preset3.label.set_color("#e6edf3")
         self.btn_preset3.on_clicked(lambda _e: self.apply_preset("Blazed spectrometer"))
 
-        self.btn_talbot = Button(self.fig.add_subplot(self.gs_hbtns[3]), "Talbot 2D", color="#0c2b2e", hovercolor="#115e59")
+        self.btn_talbot = Button(self.fig.add_subplot(self.gs_hbtns[3]), "Talbot 2D", color="#064e3b", hovercolor="#047857")
         self.btn_talbot.label.set_fontsize(7.5)
         self.btn_talbot.label.set_fontweight("bold")
-        self.btn_talbot.label.set_color("#2dd4bf")
+        self.btn_talbot.label.set_color("#34d399")
         self.btn_talbot.on_clicked(self.open_talbot_window)
 
         self.btn_reset = Button(self.fig.add_subplot(self.gs_hbtns[4]), "Reset", color="#2c1517", hovercolor="#4c1d24")
@@ -296,9 +404,9 @@ class GratingLabApp:
         self.btn_reset.on_clicked(self.reset)
 
         # ─────────────────────────────────────────────────────────────
-        # Section 01: Grating Profile & Optical Mode (Theme: Sky / Teal)
+        # Section 01: Grating Profile & View Modes (Theme: Sky / Teal)
         # ─────────────────────────────────────────────────────────────
-        gs_c0 = self.gs_controls[0].subgridspec(4, 1, height_ratios=[0.4, 1.8, 0.35, 1.0], hspace=0.15)
+        gs_c0 = self.gs_controls[0].subgridspec(5, 1, height_ratios=[0.38, 1.7, 0.35, 0.95, 0.58], hspace=0.22)
 
         ax_h0 = self.fig.add_subplot(gs_c0[0])
         ax_h0.axis("off")
@@ -316,10 +424,8 @@ class GratingLabApp:
             active=["Binary Amplitude", "Sinusoidal Phase", "Blazed Phase", "2D Orthogonal"].index(self.grating_type),
             activecolor="#14b8a6",
         )
-        for label in self.radio_type.labels:
-            label.set_color("#e6edf3")
-            label.set_fontsize(8)
         self.radio_type.on_clicked(self.on_type)
+        self._update_radio_styling()
 
         ax_h0_sub = self.fig.add_subplot(gs_c0[2])
         ax_h0_sub.axis("off")
@@ -335,68 +441,85 @@ class GratingLabApp:
             ("Log Scale", "Compare Analytical"),
             (self.log_scale, self.compare_analytical),
         )
-        for label in self.check_toggles.labels:
-            label.set_color("#e6edf3")
-            label.set_fontsize(8)
         self.check_toggles.on_clicked(self.on_toggle)
+        self._update_check_styling()
+
+        ax_p_hint = self.fig.add_subplot(gs_c0[4])
+        ax_p_hint.axis("off")
+        self.lbl_profile_telemetry = ax_p_hint.text(
+            0.0, 0.9, "",
+            fontsize=6.8, color="#64748b", family="monospace", va="top", linespacing=1.22
+        )
 
         # ─────────────────────────────────────────────────────────────
         # Section 02: Laser Emitter (Theme: Laboratory Orange #f97316)
         # ─────────────────────────────────────────────────────────────
-        gs_c1 = self.gs_controls[1].subgridspec(5, 1, height_ratios=[0.4, 0.85, 0.85, 0.85, 0.85], hspace=0.35)
+        gs_c1 = self.gs_controls[1].subgridspec(6, 1, height_ratios=[0.38, 0.82, 0.82, 0.82, 0.82, 0.58], hspace=0.25)
 
         ax_h1 = self.fig.add_subplot(gs_c1[0])
         ax_h1.axis("off")
         ax_h1.text(0.0, 0.85, "SECTION 02 // LASER EMITTER", fontsize=8.5, fontweight="bold", color="#f97316", family="monospace")
-        ax_h1.text(0.0, 0.1, "Coherent laser excitation", fontsize=7.5, color="#64748b")
+        ax_h1.text(0.0, 0.1, "Coherent laser source excitation", fontsize=7.5, color="#64748b")
 
         self.s_wl, _, _, self.txt_wl = self._create_dark_slider(
             gs_c1[1], "WAVELENGTH λ", 400.0, 700.0, self.wavelength * 1e9, 1.0, "%0.0f nm", "#f97316"
         )
         self.s_theta, _, _, self.txt_theta = self._create_dark_slider(
-            gs_c1[2], "INCIDENCE ANGLE θᵢ", -30.0, 30.0, math.degrees(self.theta_i), 0.5, "%0.1f°", "#f97316"
+            gs_c1[2], "INCIDENCE ANGLE θᵢ", -30.0, 30.0, math.degrees(self.theta_i), 0.5, "%+0.1f°", "#f97316"
         )
         self.s_waist, _, _, self.txt_waist = self._create_dark_slider(
             gs_c1[3], "BEAM WAIST w₀", 5.0, 100.0, self.beam_waist * 1e6, 1.0, "%0.1f µm", "#f97316"
         )
         self.s_dist, _, _, self.txt_dist = self._create_dark_slider(
-            gs_c1[4], "SCREEN DIST L", 0.1, 2.0, self.screen_dist, 0.05, "%0.2f m", "#f97316"
+            gs_c1[4], "SCREEN DISTANCE L", 0.10, 2.00, self.screen_dist, 0.02, "%0.2f m", "#f97316"
+        )
+
+        ax_l_telemetry = self.fig.add_subplot(gs_c1[5])
+        ax_l_telemetry.axis("off")
+        self.lbl_laser_telemetry = ax_l_telemetry.text(
+            0.0, 0.9, "",
+            fontsize=6.8, color="#fdba74", family="monospace", va="top", linespacing=1.22
         )
 
         # ─────────────────────────────────────────────────────────────
-        # Section 03: Microstructure Geometry (Theme: Laboratory Teal #14b8a6)
+        # Section 03: Grating Microstructure & Material (Theme: Teal #14b8a6)
         # ─────────────────────────────────────────────────────────────
-        gs_c2 = self.gs_controls[2].subgridspec(5, 1, height_ratios=[0.4, 0.85, 0.85, 0.85, 0.85], hspace=0.35)
+        gs_c2 = self.gs_controls[2].subgridspec(6, 1, height_ratios=[0.38, 0.82, 0.82, 0.82, 0.82, 0.58], hspace=0.25)
 
         ax_h2 = self.fig.add_subplot(gs_c2[0])
         ax_h2.axis("off")
         ax_h2.text(0.0, 0.85, "SECTION 03 // GRATING STRUCTURE", fontsize=8.5, fontweight="bold", color="#14b8a6", family="monospace")
-        ax_h2.text(0.0, 0.1, "Diffractive microstructure pitch", fontsize=7.5, color="#64748b")
+        ax_h2.text(0.0, 0.1, "Microstructure pitch & substrate material", fontsize=7.5, color="#64748b")
 
         self.s_period, _, _, self.txt_period = self._create_dark_slider(
-            gs_c2[1], "GRATING PITCH d", 0.5, 20.0, self.period * 1e6, 0.05, "%0.2f µm", "#14b8a6"
+            gs_c2[1], "GRATING PITCH d", 0.50, 20.00, self.period * 1e6, 0.05, "%0.2f µm", "#14b8a6"
+        )
+        self.s_nindex, _, _, self.txt_nindex = self._create_dark_slider(
+            gs_c2[2], "REFRACTIVE INDEX n", 1.00, 2.50, self.n_index, 0.01, "%0.2f", "#14b8a6"
         )
         self.s_n, _, _, self.txt_n = self._create_dark_slider(
-            gs_c2[2], "RULINGS COUNT N", 2, 50, self.n_slits, 1, "%d lines", "#14b8a6"
+            gs_c2[3], "RULINGS COUNT N", 2, 50, self.n_slits, 1, "%d lines", "#14b8a6"
         )
 
-        # Progressive disclosure slot (row 3): Duty vs Phase Depth
+        # Progressive disclosure slot (row 4): Duty vs Phase Depth
         self.s_duty, self.ax_duty_lbl, self.ax_duty_track, self.txt_duty = self._create_dark_slider(
-            gs_c2[3], "DUTY / SLIT FRAC", 0.05, 0.95, self.duty, 0.01, "%0.2f", "#14b8a6"
+            gs_c2[4], "DUTY CYCLE / SLIT γ", 0.05, 0.95, self.duty, 0.01, "%0.2f", "#14b8a6"
         )
         self.s_phase, self.ax_phase_lbl, self.ax_phase_track, self.txt_phase = self._create_dark_slider(
-            gs_c2[3], "PHASE DEPTH φ₀", 0.1, 4.0 * math.pi, self.phase_depth, 0.1, "%0.2f rad", "#14b8a6"
+            gs_c2[4], "PHASE DEPTH φ₀", 0.10, 4.0 * math.pi, self.phase_depth, 0.05, "%0.2f rad", "#14b8a6"
         )
 
-        ax_g_hint = self.fig.add_subplot(gs_c2[4])
-        ax_g_hint.axis("off")
-        self.lbl_grating_freq = ax_g_hint.text(0.0, 0.65, "", fontsize=7.8, color="#38bdf8", family="monospace")
-        self.lbl_grating_hint = ax_g_hint.text(0.0, 0.15, "", fontsize=7.5, color="#64748b")
+        ax_g_telemetry = self.fig.add_subplot(gs_c2[5])
+        ax_g_telemetry.axis("off")
+        self.lbl_grating_telemetry = ax_g_telemetry.text(
+            0.0, 0.9, "",
+            fontsize=6.8, color="#5eead4", family="monospace", va="top", linespacing=1.22
+        )
 
         # ─────────────────────────────────────────────────────────────
         # Section 04: Bloomberg-Grade Telemetry Terminal (Theme: Cyan #38bdf8)
         # ─────────────────────────────────────────────────────────────
-        gs_c3 = self.gs_controls[3].subgridspec(2, 1, height_ratios=[0.4, 3.4], hspace=0.08)
+        gs_c3 = self.gs_controls[3].subgridspec(2, 1, height_ratios=[0.38, 3.86], hspace=0.08)
 
         ax_h3 = self.fig.add_subplot(gs_c3[0])
         ax_h3.axis("off")
@@ -411,9 +534,9 @@ class GratingLabApp:
         self.ax_term.set_yticks([])
 
         self.term_text = self.ax_term.text(
-            0.04, 0.94, "",
-            va="top", ha="left", fontsize=7.3, family="monospace", color="#7dd3fc",
-            linespacing=1.28
+            0.04, 0.95, "",
+            va="top", ha="left", fontsize=7.1, family="monospace", color="#7dd3fc",
+            linespacing=1.25
         )
 
     def on_type(self, label: str) -> None:
@@ -432,21 +555,28 @@ class GratingLabApp:
             self.ax_duty_lbl.set_visible(True)
             self.ax_duty_track.set_visible(True)
 
-        hints = {
-            "Binary Amplitude": "Profile: Binary chrome-on-glass slits",
-            "Sinusoidal Phase": "Profile: Sinusoidal phase modulation",
-            "Blazed Phase": "Profile: Asymmetric sawtooth blazed grooves",
-            "2D Orthogonal": "Profile: 2D orthogonal grid mesh",
+        self._update_radio_styling()
+
+        profile_hints = {
+            "Binary Amplitude": "Mechanism: Spatial amplitude mask\nSubstrate: Transmissive optical window",
+            "Sinusoidal Phase": "Mechanism: Harmonic OPD phase delay\nDiffraction: Bessel J_m distribution",
+            "Blazed Phase": "Mechanism: Asymmetric blazed groove\nBlaze Peak: Directed order focus",
+            "2D Orthogonal": "Mechanism: 2-axis orthogonal grid\nDiffraction: 2D spatial lattice",
         }
-        self.lbl_grating_hint.set_text(hints.get(label, ""))
-        self.update(None)
+        self.lbl_profile_telemetry.set_text(profile_hints.get(label, ""))
+        if not self._bulk_updating:
+            self._set_active_preset(None)
+            self.update(None)
 
     def on_toggle(self, _label: str) -> None:
         """Handle view check box toggles."""
         status = self.check_toggles.get_status()
         self.log_scale = status[0]
         self.compare_analytical = status[1]
-        self.update(None)
+        self._update_check_styling()
+        if not self._bulk_updating:
+            self._set_active_preset(None)
+            self.update(None)
 
     def reset(self, _event=None) -> None:
         """Restore all parameters to defaults."""
@@ -461,12 +591,16 @@ class GratingLabApp:
             theta=d["theta_i_deg"],
             waist=d["beam_waist_um"],
             dist=d["screen_dist_m"],
+            n_index=d.get("n_index", 1.50),
             log=d["log_scale"],
             comp=d["compare_analytical"],
         )
+        self._set_active_preset(None)
+        self.lbl_head_status.set_text("● RESET RESTORED")
+        self.lbl_head_status.set_color("#fca5a5")
 
     def apply_preset(self, name: str) -> None:
-        """Apply pre-configured optical presets."""
+        """Apply pre-configured optical presets in a single atomic update."""
         if name == "Single slit":
             self.apply_values(
                 grating_type="Binary Amplitude",
@@ -477,7 +611,11 @@ class GratingLabApp:
                 theta=0.0,
                 waist=50.0,
                 dist=0.5,
+                n_index=1.50,
             )
+            self._set_active_preset(0)
+            self.lbl_head_status.set_text("● PRESET: SINGLE SLIT")
+            self.lbl_head_status.set_color("#2dd4bf")
         elif name == "Diffraction grating":
             self.apply_values(
                 grating_type="Binary Amplitude",
@@ -488,7 +626,11 @@ class GratingLabApp:
                 theta=0.0,
                 waist=40.0,
                 dist=0.5,
+                n_index=1.50,
             )
+            self._set_active_preset(1)
+            self.lbl_head_status.set_text("● PRESET: GRATING (CD)")
+            self.lbl_head_status.set_color("#2dd4bf")
         elif name == "Blazed spectrometer":
             self.apply_values(
                 grating_type="Blazed Phase",
@@ -499,7 +641,11 @@ class GratingLabApp:
                 theta=0.0,
                 waist=40.0,
                 dist=0.5,
+                n_index=1.50,
             )
+            self._set_active_preset(2)
+            self.lbl_head_status.set_text("● PRESET: BLAZED SPEC")
+            self.lbl_head_status.set_color("#2dd4bf")
 
     def apply_values(
         self,
@@ -512,74 +658,178 @@ class GratingLabApp:
         theta: float | None = None,
         waist: float | None = None,
         dist: float | None = None,
+        n_index: float | None = None,
         log: bool | None = None,
         comp: bool | None = None,
     ) -> None:
-        """Programmatically update widgets and state without redundant event floods."""
-        sliders = [self.s_wl, self.s_theta, self.s_waist, self.s_dist, self.s_period, self.s_n, self.s_duty, self.s_phase]
-        for s in sliders:
-            s.eventson = False
+        """Programmatically update widgets and state in a single bulk operation."""
+        self._bulk_updating = True
+        try:
+            sliders = [
+                self.s_wl, self.s_theta, self.s_waist, self.s_dist,
+                self.s_period, self.s_nindex, self.s_n, self.s_duty, self.s_phase
+            ]
+            for s in sliders:
+                s.eventson = False
 
-        if wl is not None:
-            self.s_wl.set_val(wl)
-            self.txt_wl.set_text("%0.0f nm" % wl)
-        if theta is not None:
-            self.s_theta.set_val(theta)
-            self.txt_theta.set_text("%0.1f°" % theta)
-        if waist is not None:
-            self.s_waist.set_val(waist)
-            self.txt_waist.set_text("%0.1f µm" % waist)
-        if dist is not None:
-            self.s_dist.set_val(dist)
-            self.txt_dist.set_text("%0.2f m" % dist)
-        if period is not None:
-            self.s_period.set_val(period)
-            self.txt_period.set_text("%0.2f µm" % period)
-        if n_slits is not None:
-            self.s_n.set_val(n_slits)
-            self.txt_n.set_text("%d lines" % n_slits)
-        if duty is not None:
-            self.s_duty.set_val(duty)
-            self.txt_duty.set_text("%0.2f" % duty)
-        if phase is not None:
-            self.s_phase.set_val(phase)
-            self.txt_phase.set_text("%0.2f rad" % phase)
+            if wl is not None:
+                self.s_wl.set_val(wl)
+                color_name = "Red" if wl >= 620 else ("Green" if wl >= 495 else "Blue/Violet")
+                self.txt_wl.set_text(f"{wl:.0f} nm [{color_name}]")
+            if theta is not None:
+                self.s_theta.set_val(theta)
+                self.txt_theta.set_text(f"{theta:+.1f}°")
+            if waist is not None:
+                self.s_waist.set_val(waist)
+                self.txt_waist.set_text(f"{waist:.1f} µm")
+            if dist is not None:
+                self.s_dist.set_val(dist)
+                self.txt_dist.set_text(f"{dist:.2f} m")
+            if period is not None:
+                self.s_period.set_val(period)
+                lines_per_mm = 1e3 / period
+                self.txt_period.set_text(f"{period:.2f} µm ({lines_per_mm:.0f} l/mm)")
+            if n_index is not None:
+                self.s_nindex.set_val(n_index)
+                mat_name, _ = get_material_info(n_index)
+                self.txt_nindex.set_text(f"{n_index:.2f} ({mat_name.split()[0]})")
+            if n_slits is not None:
+                self.s_n.set_val(n_slits)
+                self.txt_n.set_text(f"{n_slits:d} lines")
+            if duty is not None:
+                self.s_duty.set_val(duty)
+                p_val = self.s_period.val
+                self.txt_duty.set_text(f"{duty:.2f} (a={duty*p_val:.2f}µm)")
+            if phase is not None:
+                self.s_phase.set_val(phase)
+                n_val = self.s_nindex.val
+                wl_val = self.s_wl.val
+                h_nm = (phase * wl_val) / (math.pi * (n_val - 1.0)) if n_val > 1.0 else 0.0
+                self.txt_phase.set_text(f"{phase/math.pi:.2f}π rad (h={h_nm:.0f}nm)")
 
-        for s in sliders:
-            s.eventson = True
+            for s in sliders:
+                s.eventson = True
 
-        if log is not None or comp is not None:
-            status = self.check_toggles.get_status()
-            if log is not None and status[0] != log:
-                self.check_toggles.set_active(0)
-            if comp is not None and status[1] != comp:
-                self.check_toggles.set_active(1)
+            if grating_type is not None:
+                self.grating_type = grating_type
+                types = ["Binary Amplitude", "Sinusoidal Phase", "Blazed Phase", "2D Orthogonal"]
+                if grating_type in types:
+                    self.radio_type.eventson = False
+                    self.radio_type.set_active(types.index(grating_type))
+                    self.radio_type.eventson = True
+                    self._update_radio_styling()
 
-        if grating_type is not None and grating_type != self.grating_type:
-            types = ["Binary Amplitude", "Sinusoidal Phase", "Blazed Phase", "2D Orthogonal"]
-            if grating_type in types:
-                self.radio_type.set_active(types.index(grating_type))
-                return
+            if log is not None or comp is not None:
+                self.check_toggles.eventson = False
+                if log is not None and log != self.log_scale:
+                    self.check_toggles.set_active(0)
+                if comp is not None and comp != self.compare_analytical:
+                    self.check_toggles.set_active(1)
+                self.check_toggles.eventson = True
+                self._update_check_styling()
+
+        finally:
+            self._bulk_updating = False
 
         self.on_type(self.grating_type)
 
     def update(self, _val=None) -> None:
         """Perform exact wave-optics calculation, update research-grade plots, and telemetry terminal."""
-        self.wavelength = self.s_wl.val * 1e-9
-        self.period = self.s_period.val * 1e-6
-        self.duty = self.s_duty.val
-        self.phase_depth = self.s_phase.val
-        self.n_slits = int(self.s_n.val)
-        self.theta_i = math.radians(self.s_theta.val)
-        self.screen_dist = self.s_dist.val
-        self.beam_waist = self.s_waist.val * 1e-6
+        if self._bulk_updating:
+            return
 
-        # Update spatial frequency label
-        spatial_freq = 1.0 / (self.period * 1e3) if self.period > 0 else 0.0
-        self.lbl_grating_freq.set_text(f"SPATIAL FREQUENCY: {spatial_freq:.1f} lines/mm")
+        wl_nm = self.s_wl.val
+        theta_deg = self.s_theta.val
+        waist_um = self.s_waist.val
+        dist_m = self.s_dist.val
+        period_um = self.s_period.val
+        n_idx = self.s_nindex.val
+        n_slits_val = int(round(self.s_n.val))
+        duty_val = self.s_duty.val
+        phase_val = self.s_phase.val
+
+        current_sim_params = (
+            self.grating_type,
+            round(wl_nm, 1),
+            round(theta_deg, 2),
+            round(waist_um, 1),
+            round(dist_m, 2),
+            round(period_um, 3),
+            round(n_idx, 2),
+            n_slits_val,
+            round(duty_val, 2),
+            round(phase_val, 2),
+            self.compare_analytical,
+        )
+
+        # Update dynamic live readout strings with physical feedback
+        color_name = "Red" if wl_nm >= 620 else ("Green" if wl_nm >= 495 else "Blue/Violet")
+        self.txt_wl.set_text(f"{wl_nm:.0f} nm [{color_name}]")
+        self.txt_theta.set_text(f"{theta_deg:+.1f}°")
+        self.txt_waist.set_text(f"{waist_um:.1f} µm")
+        self.txt_dist.set_text(f"{dist_m:.2f} m")
+
+        lines_per_mm = 1e3 / period_um if period_um > 0 else 0.0
+        self.txt_period.set_text(f"{period_um:.2f} µm ({lines_per_mm:.0f} l/mm)")
+
+        mat_name, t_fresnel = get_material_info(n_idx)
+        self.txt_nindex.set_text(f"{n_idx:.2f} ({mat_name.split()[0]})")
+        self.txt_n.set_text(f"{n_slits_val:d} lines")
+
+        slit_width_um = duty_val * period_um
+        self.txt_duty.set_text(f"{duty_val:.2f} (a={slit_width_um:.2f}µm)")
+
+        h_relief_nm = (phase_val * wl_nm) / (math.pi * (n_idx - 1.0)) if n_idx > 1.0 else 0.0
+        self.txt_phase.set_text(f"{phase_val/math.pi:.2f}π rad (h={h_relief_nm:.0f}nm)")
+
+        # Update bottom telemetry hints
+        freq_thz = (3e8 / (wl_nm * 1e-9)) * 1e-12
+        energy_ev = (6.626e-34 * 3e8 / (wl_nm * 1e-9)) / 1.602e-19
+        wavenumber_um = 1.0 / (wl_nm * 1e-3)
+        self.lbl_laser_telemetry.set_text(
+            f"OPTICAL BAND : {wl_nm:.0f} nm [{color_name}] | ν = {freq_thz:.1f} THz\n"
+            f"QUANTUM BEAM : E = {energy_ev:.2f} eV | k = {wavenumber_um:.2f} µm⁻¹"
+        )
+
+        is_phase = self.grating_type in ("Sinusoidal Phase", "Blazed Phase")
+        if is_phase:
+            self.lbl_grating_telemetry.set_text(
+                f"MATERIAL: {mat_name} (n = {n_idx:.2f})\n"
+                f"RELIEF  : {lines_per_mm:.0f} l/mm  |  Groove h = {h_relief_nm:.0f} nm"
+            )
+        else:
+            self.lbl_grating_telemetry.set_text(
+                f"SUBSTRATE: {mat_name} (n = {n_idx:.2f})\n"
+                f"GEOMETRY : {lines_per_mm:.0f} l/mm  |  Slit a = {slit_width_um:.2f} µm"
+            )
 
         # Update top status telemetry
-        self.lbl_head_telemetry.set_text(f"LIVE // λ = {self.s_wl.val:.0f} nm | d = {self.period*1e6:.2f} µm")
+        self.lbl_head_telemetry.set_text(f"LIVE // λ = {wl_nm:.0f} nm | d = {period_um:.2f} µm | n = {n_idx:.2f}")
+
+        # Optimization: Check if simulation recalculation is actually required
+        if current_sim_params == self._last_sim_params:
+            if self.log_scale != self._last_log_scale:
+                self._last_log_scale = self.log_scale
+                self.ax_fft.set_yscale("log" if self.log_scale else "linear")
+                if self.log_scale:
+                    self.ax_fft.set_ylim(1e-4, 1.25)
+                else:
+                    self.ax_fft.set_ylim(-0.02, 1.08)
+                self.fig.canvas.draw_idle()
+            return
+
+        self._last_sim_params = current_sim_params
+        self._last_log_scale = self.log_scale
+
+        self.wavelength = wl_nm * 1e-9
+        self.period = period_um * 1e-6
+        self.n_index = n_idx
+        self.duty = duty_val
+        self.phase_depth = phase_val
+        self.n_slits = n_slits_val
+        self.theta_i = math.radians(theta_deg)
+        self.screen_dist = dist_m
+        self.beam_waist = waist_um * 1e-6
 
         display_periods = max(12, int(self.n_slits * 1.5))
         window_width = display_periods * self.period
@@ -623,7 +873,7 @@ class GratingLabApp:
                 ha="center", va="bottom", fontsize=7.5, color="#38bdf8", family="monospace", fontweight="bold"
             )
 
-        self.ax_profile.set_title(f"CH1 // APERTURE TRANSMITTANCE & PHASE MODULATION: {self.grating_type.upper()}", fontsize=9, fontweight="bold", color="#e6edf3", pad=10, loc="left")
+        self.ax_profile.set_title(f"CH1 // APERTURE TRANSMITTANCE [{self.grating_type.upper()}]", fontsize=9, fontweight="bold", color="#e6edf3", pad=10, loc="left")
         self.ax_profile.set_xlabel("Transverse Coordinate x [µm]", fontsize=8, color="#8b949e", labelpad=2)
         self.ax_profile.set_ylabel("Field Amplitude / Phase (rad/π)", fontsize=8, color="#8b949e")
         self.ax_profile.set_ylim(-1.15, 1.28)
@@ -769,9 +1019,9 @@ class GratingLabApp:
         # ─── 4. Bloomberg Telemetry Terminal Feed ───
         z_t_um = (2.0 * self.period**2 / self.wavelength) * 1e6
         telemetry_lines = [
-            f"SYS: λ={self.wavelength*1e9:.0f}nm  d={self.period*1e6:.2f}µm  N={self.n_slits}  L={self.screen_dist:.2f}m",
-            f"FREQ: {spatial_freq:.0f} lines/mm  |  z_T = {z_t_um:.2f} µm",
-            "─" * 38,
+            f"SYS: λ={self.wavelength*1e9:.0f}nm  d={self.period*1e6:.2f}µm  N={self.n_slits}  n={self.n_index:.2f}",
+            f"FREQ: {lines_per_mm:.0f} lines/mm  |  z_T = {z_t_um:.2f} µm  |  {mat_name.split()[0]}",
+            "─" * 40,
             "ORD   DIFF-ANGLE    DET-OFFSET   DISPERSION",
         ]
         for m in sorted(orders.keys()):
@@ -782,7 +1032,7 @@ class GratingLabApp:
             blaze_flag = "  ◀ BLAZE" if (self.grating_type == "Blazed Phase" and m == 1) else ""
             telemetry_lines.append(f"m={m:+2d}   {ang_deg:+7.2f}°    {y_cm:+7.1f} cm    {disp:0.3f}°/nm{blaze_flag}")
 
-        telemetry_lines.append("─" * 38)
+        telemetry_lines.append("─" * 40)
         if self.grating_type == "Binary Amplitude":
             missing = analytical.missing_orders(self.period, a)
             if missing:
@@ -791,9 +1041,9 @@ class GratingLabApp:
             else:
                 telemetry_lines.append("MISSING ORDERS : None detected")
         elif self.grating_type == "Blazed Phase":
-            telemetry_lines.append("PRIMARY BLAZE  : m = +1 (Efficiency ~95%)")
+            telemetry_lines.append(f"PRIMARY BLAZE  : m = +1 (Efficiency ~95%) | h = {h_relief_nm:.1f} nm")
         elif self.grating_type == "Sinusoidal Phase":
-            telemetry_lines.append(f"PHASE DEPTH    : φ₀ = {self.phase_depth:.2f} rad (Bessel J_m)")
+            telemetry_lines.append(f"PHASE DEPTH    : φ₀ = {self.phase_depth:.2f} rad (h = {h_relief_nm:.1f} nm)")
         else:
             telemetry_lines.append("2D PROFILE     : 2-axis orthogonal grid")
 
