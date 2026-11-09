@@ -1,16 +1,20 @@
 """
 gratinglab.visualize
 ====================
-Premium scientific instrument dashboard for optical grating diffraction and characterization.
+Research-grade scientific visualization and instrument dashboard for optical grating
+diffraction, Angular Spectrum propagation, and material metrology.
 Inspired by laboratory spectrum analyzers, Bloomberg-grade data density, and modern dark CAD metrology.
 
-Architecture:
-- Matte obsidian chassis (#0b0f14) and dark titanium subplots (#11161d)
-- Cohesive Teal (#14b8a6) and Orange (#f97316) instrument accent system
-- Top navigation bar with system identity, status telemetry, and quick preset buttons
-- Dual-channel oscilloscope simulation workspace (transmittance profile & Fraunhofer spectrum)
-- Calibrated optical detector screen strip
-- Four modular control & telemetry decks with Bloomberg-density order analytics
+Visualizations:
+1. Aperture Plane Transmittance: Field magnitude |t(x)| area fill, phase shift φ(x)/π,
+   illuminating Gaussian beam envelope w₀, and period pitch (d) dimension annotation.
+2. Far-Field Fraunhofer Diffraction: High-resolution FFT spectrum with area fill,
+   analytical N-slit model, single-slit envelope sinc²(β), diffraction peak maximum points,
+   suppressed missing orders, and blaze order highlighting.
+3. Calibrated Optical Detector Array: Physically divergent 2D laser spots, calibrated
+   transverse metric scale y = L·tan(θ) in cm, and downward spot pointer reticles.
+4. Near-Field Talbot Carpet: Multi-plane fractional Talbot self-imaging (z_T, z_T/2, z_T/4),
+   dual physical (µm) and normalized (z/z_T) coordinates, and calibrated wavefield colorbar.
 """
 
 from __future__ import annotations
@@ -18,11 +22,21 @@ import math
 import os
 import sys
 
-# Ensure an interactive backend is used for desktop GUI rendering
+# Ensure an interactive backend is used for desktop GUI rendering if not in headless mode
 import matplotlib
-if matplotlib.get_backend().lower() in ("agg", "template", "pdf", "ps", "svg"):
-    for _backend in ["TkAgg", "QtAgg", "Qt5Agg", "WXAgg"]:
+if os.environ.get("MPLBACKEND", "").lower() != "agg" and matplotlib.get_backend().lower() in ("agg", "template", "pdf", "ps", "svg"):
+    for _backend in ["QtAgg", "TkAgg", "Qt5Agg", "WXAgg"]:
         try:
+            import importlib
+            # Check if backend module can be imported
+            if _backend == "QtAgg":
+                import PyQt6
+            elif _backend == "TkAgg":
+                import tkinter
+            elif _backend == "Qt5Agg":
+                import PyQt5
+            elif _backend == "WXAgg":
+                import wx
             matplotlib.use(_backend, force=True)
             break
         except Exception:
@@ -150,8 +164,8 @@ class GratingLabApp:
         # Tier 3: 4-Column Control Deck & High-Density Telemetry Terminal
         self.gs_main = self.fig.add_gridspec(
             4, 1,
-            height_ratios=[0.38, 3.15, 0.55, 3.75],
-            hspace=0.44,
+            height_ratios=[0.38, 3.2, 0.65, 3.75],
+            hspace=0.46,
             left=0.035, right=0.965, top=0.965, bottom=0.035,
         )
 
@@ -550,7 +564,7 @@ class GratingLabApp:
         self.on_type(self.grating_type)
 
     def update(self, _val=None) -> None:
-        """Perform exact wave-optics calculation, update plots, screen pattern, and telemetry terminal."""
+        """Perform exact wave-optics calculation, update research-grade plots, and telemetry terminal."""
         self.wavelength = self.s_wl.val * 1e-9
         self.period = self.s_period.val * 1e-6
         self.duty = self.s_duty.val
@@ -585,19 +599,36 @@ class GratingLabApp:
         incident_beam = propagation.gaussian_beam(grid.x, w0=self.beam_waist)
         t_illuminated = t_raw * aperture_mask * incident_beam
 
-        # ─── 1. Channel 1: Aperture Plane Plot ───
+        # ─── 1. Channel 1: Aperture Plane Transmittance & Phase ───
         self.ax_profile.clear()
         self.ax_profile.set_facecolor("#11161d")
         x_um = grid.x * 1e6
         crop_mask = np.abs(grid.x) <= (4.0 * self.period)
+        d_um = self.period * 1e6
 
-        self.ax_profile.plot(x_um[crop_mask], np.abs(t_raw)[crop_mask], label="CH1: |t(x)| Magnitude", color="#14b8a6", lw=1.5)
-        self.ax_profile.plot(x_um[crop_mask], np.angle(t_raw)[crop_mask] / math.pi, label="CH2: Phase φ / π", color="#f97316", ls="--", lw=1.2)
-        self.ax_profile.set_title(f"CH1 // APERTURE TRANSMITTANCE PROFILE: {self.grating_type.upper()}", fontsize=9, fontweight="bold", color="#e6edf3", pad=10, loc="left")
-        self.ax_profile.set_xlabel("Transverse Position x [µm]", fontsize=8, color="#8b949e", labelpad=2)
-        self.ax_profile.set_ylabel("Amplitude / Phase Ratio", fontsize=8, color="#8b949e")
+        # Shaded magnitude area fill & sharp outline
+        self.ax_profile.fill_between(x_um[crop_mask], 0, np.abs(t_raw)[crop_mask], color="#14b8a6", alpha=0.18, label="|t(x)| Magnitude")
+        self.ax_profile.plot(x_um[crop_mask], np.abs(t_raw)[crop_mask], color="#2dd4bf", lw=1.8)
+        self.ax_profile.plot(x_um[crop_mask], np.angle(t_raw)[crop_mask] / math.pi, color="#f97316", ls="--", lw=1.4, label="Phase φ(x) / π")
+        self.ax_profile.plot(x_um[crop_mask], np.abs(incident_beam)[crop_mask], color="#94a3b8", ls=":", lw=1.2, alpha=0.75, label="Beam Envelope w₀")
+
+        # Period dimension annotation bracket
+        if 0.5 <= d_um <= (np.sum(crop_mask) * (grid.dx * 1e6)):
+            self.ax_profile.annotate(
+                "", xy=(0.0, 1.08), xytext=(d_um, 1.08),
+                arrowprops=dict(arrowstyle="<->", color="#38bdf8", lw=1.0)
+            )
+            self.ax_profile.text(
+                d_um / 2.0, 1.12, f"d = {d_um:.2f} µm",
+                ha="center", va="bottom", fontsize=7.5, color="#38bdf8", family="monospace", fontweight="bold"
+            )
+
+        self.ax_profile.set_title(f"CH1 // APERTURE TRANSMITTANCE & PHASE MODULATION: {self.grating_type.upper()}", fontsize=9, fontweight="bold", color="#e6edf3", pad=10, loc="left")
+        self.ax_profile.set_xlabel("Transverse Coordinate x [µm]", fontsize=8, color="#8b949e", labelpad=2)
+        self.ax_profile.set_ylabel("Field Amplitude / Phase (rad/π)", fontsize=8, color="#8b949e")
+        self.ax_profile.set_ylim(-1.15, 1.28)
         self.ax_profile.grid(True, linestyle=":", color="#212936", alpha=0.8)
-        leg1 = self.ax_profile.legend(loc="upper right", fontsize=7.5, facecolor="#161c24", edgecolor="#2c3543")
+        leg1 = self.ax_profile.legend(loc="upper right", fontsize=7.2, facecolor="#161c24", edgecolor="#2c3543")
         for text in leg1.get_texts():
             text.set_color("#e6edf3")
 
@@ -608,14 +639,18 @@ class GratingLabApp:
             wavelength=self.wavelength,
             pad_factor=2,
         )
+        theta_rad_dense = np.radians(theta_deg)
 
         self.ax_fft.clear()
         self.ax_fft.set_facecolor("#11161d")
         y_data = np.maximum(intensity, 1e-4) if self.log_scale else intensity
-        self.ax_fft.plot(theta_deg, y_data, label="FFT Spectrum", color="#10b981", lw=1.6)
 
+        # Spectrum area fill & primary trace
+        self.ax_fft.fill_between(theta_deg, 1e-4 if self.log_scale else 0, y_data, color="#10b981", alpha=0.12)
+        self.ax_fft.plot(theta_deg, y_data, label="Numerical FFT", color="#10b981", lw=1.6)
+
+        # Analytical multi-slit model
         if self.compare_analytical and self.grating_type == "Binary Amplitude":
-            theta_rad_dense = np.radians(theta_deg)
             i_analytical = analytical.n_slit_intensity(
                 theta=theta_rad_dense,
                 a=a,
@@ -627,6 +662,13 @@ class GratingLabApp:
             y_analytical = np.maximum(i_analytical, 1e-4) if self.log_scale else i_analytical
             self.ax_fft.plot(theta_deg, y_analytical, label="Analytical N-Slit", color="#f59e0b", ls=":", lw=1.3)
 
+            # Single-slit diffraction envelope sinc²(β)
+            beta_norm = (a / self.wavelength) * np.sin(theta_rad_dense)
+            sinc_sq = np.sinc(beta_norm)**2
+            y_env = np.maximum(sinc_sq, 1e-4) if self.log_scale else sinc_sq
+            self.ax_fft.plot(theta_deg, y_env, label="Slit Envelope sinc²(β)", color="#64748b", ls="-.", lw=1.1, alpha=0.8)
+
+        # Propagating diffraction orders
         orders, evanescent = analytical.order_angles(
             d=self.period,
             wavelength=self.wavelength,
@@ -636,7 +678,7 @@ class GratingLabApp:
         for m, ang_rad in orders.items():
             ang_d = math.degrees(ang_rad)
             if -48.0 <= ang_d <= 48.0:
-                self.ax_fft.axvline(ang_d, color="#334155", linestyle="--", alpha=0.7, lw=0.9)
+                self.ax_fft.axvline(ang_d, color="#334155", linestyle="--", alpha=0.6, lw=0.9)
                 self.ax_fft.text(
                     ang_d,
                     1.01,
@@ -649,18 +691,37 @@ class GratingLabApp:
                     fontweight="bold",
                     family="monospace",
                 )
+                # Diffraction peak tip marker
+                peak_idx = np.argmin(np.abs(theta_deg - ang_d))
+                peak_val = y_data[peak_idx]
+                if peak_val > (1e-3 if self.log_scale else 0.05):
+                    marker_col = "#f97316" if (self.grating_type == "Blazed Phase" and m == 1) else "#38bdf8"
+                    self.ax_fft.scatter(ang_d, peak_val, color=marker_col, s=18, zorder=4, edgecolor="#0b0f14", linewidth=0.5)
+
+        # Suppressed missing orders markers (e.g. m = ±2)
+        if self.grating_type == "Binary Amplitude":
+            missing_list = analytical.missing_orders(self.period, a)
+            for m_miss in missing_list:
+                if m_miss in orders:
+                    ang_miss_d = math.degrees(orders[m_miss])
+                    if -48.0 <= ang_miss_d <= 48.0:
+                        self.ax_fft.scatter(ang_miss_d, 1e-4 if self.log_scale else 0.0, marker="x", color="#ef4444", s=22, zorder=5, lw=1.2)
+                        self.ax_fft.text(
+                            ang_miss_d, 2e-4 if self.log_scale else 0.04, f"m={m_miss:+} (0)",
+                            ha="center", va="bottom", fontsize=6.8, color="#ef4444", family="monospace"
+                        )
 
         self.ax_fft.set_title("CH2 // FAR-FIELD FRAUNHOFER DIFFRACTION SPECTRUM", fontsize=9, fontweight="bold", color="#e6edf3", pad=10, loc="left")
         self.ax_fft.set_xlabel("Diffraction Angle θ [deg]", fontsize=8, color="#8b949e", labelpad=2)
-        self.ax_fft.set_ylabel("Intensity (Log)" if self.log_scale else "Normalized Intensity I(θ)", fontsize=8, color="#8b949e")
+        self.ax_fft.set_ylabel("Relative Log Irradiance log₁₀(I / I₀)" if self.log_scale else "Normalized Spectral Irradiance I(θ)", fontsize=8, color="#8b949e")
         self.ax_fft.set_xlim(-50.0, 50.0)
         if self.log_scale:
             self.ax_fft.set_yscale("log")
-            self.ax_fft.set_ylim(1e-4, 1.2)
+            self.ax_fft.set_ylim(1e-4, 1.25)
         else:
             self.ax_fft.set_ylim(-0.02, 1.08)
         self.ax_fft.grid(True, linestyle=":", color="#212936", alpha=0.8)
-        leg2 = self.ax_fft.legend(loc="upper right", fontsize=7.5, facecolor="#161c24", edgecolor="#2c3543")
+        leg2 = self.ax_fft.legend(loc="upper right", fontsize=7.2, facecolor="#161c24", edgecolor="#2c3543")
         for text in leg2.get_texts():
             text.set_color("#e6edf3")
 
@@ -669,7 +730,10 @@ class GratingLabApp:
         screen_y_cm = propagation.sin_theta_to_screen_position(np.radians(theta_deg), self.screen_dist) * 100.0
         y_screen_linear = np.linspace(-30.0, 30.0, 600)
         i_screen = np.interp(y_screen_linear, screen_y_cm, intensity, left=0.0, right=0.0)
-        strip_2d = np.tile(i_screen, (35, 1))
+
+        # Realistic Gaussian vertical cross-section for laser spots
+        y_vert = np.linspace(-1.0, 1.0, 35)[:, np.newaxis]
+        strip_2d = np.exp(-y_vert**2 / 0.35) * i_screen[np.newaxis, :]
 
         laser_cmap = get_laser_colormap(self.s_wl.val)
         self.ax_screen.imshow(
@@ -679,15 +743,27 @@ class GratingLabApp:
             aspect="auto",
             origin="lower",
         )
+
+        # Spot location pointer triangles
+        for m, ang_rad in orders.items():
+            y_m = self.screen_dist * math.tan(ang_rad) * 100.0
+            if -28.0 <= y_m <= 28.0:
+                self.ax_screen.scatter(y_m, 1.35, marker="v", color="#38bdf8", s=16, zorder=5)
+                self.ax_screen.text(
+                    y_m, 1.48, f"m={m:+d}" if m != 0 else "m=0",
+                    ha="center", va="bottom", fontsize=6.8, color="#38bdf8", family="monospace"
+                )
+
         self.ax_screen.set_title(
-            f"DETECTOR ARRAY // SIMULATED SCREEN PATTERN (L = {self.screen_dist:.2f} m  |  λ = {int(self.s_wl.val)} nm)",
+            f"DETECTOR ARRAY // SIMULATED SCREEN PATTERN (L = {self.screen_dist:.2f} m  |  λ = {int(self.s_wl.val)} nm  |  y = L·tan θ)",
             fontsize=8.5,
             fontweight="bold",
             color="#e6edf3",
-            pad=3,
+            pad=8,
             loc="left",
         )
-        self.ax_screen.set_xlabel("Detector Transverse Offset y [cm]", fontsize=8, color="#8b949e", labelpad=2)
+        self.ax_screen.set_xlabel("Transverse Screen Displacement y [cm] (Metric Scale)", fontsize=8, color="#8b949e", labelpad=2)
+        self.ax_screen.set_ylim(-1.5, 2.0)
         self.ax_screen.set_yticks([])
 
         # ─── 4. Bloomberg Telemetry Terminal Feed ───
@@ -730,17 +806,14 @@ class GratingLabApp:
         self.fig.canvas.draw_idle()
 
     def open_talbot_window(self, _event=None) -> None:
-        """Launch the near-field Talbot carpet simulation in a dark instrument window."""
-        fig_t, ax_t = plt.subplots(figsize=(9, 6), facecolor="#0b0f14")
-        fig_t.canvas.manager.set_window_title("GratingLab // Near-Field Talbot Carpet Analyzer")
-        ax_t.set_facecolor("#11161d")
-        ax_t.tick_params(colors="#8b949e", labelsize=8)
-        for spine in ax_t.spines.values():
-            spine.set_color("#242c38")
-            spine.set_linewidth(0.8)
+        """Launch the near-field Talbot carpet simulation in a dark research-grade window."""
+        fig_t = plt.figure(figsize=(10, 6.5), dpi=100, facecolor="#0b0f14")
+        if hasattr(fig_t.canvas, "manager") and fig_t.canvas.manager is not None:
+            fig_t.canvas.manager.set_window_title("GratingLab // Near-Field Talbot Carpet Analyzer")
+        ax_t = fig_t.add_subplot(111, facecolor="#11161d")
 
         z_t = analytical.talbot_distance(self.period, self.wavelength)
-        grid = gratings.Grid1D(width=20.0 * self.period, num_samples=1500)
+        grid = gratings.Grid1D(width=20.0 * self.period, num_samples=2048)
         t_grating = gratings.binary_amplitude(grid.x, d=self.period, a=self.duty * self.period)
 
         x, z_arr, carpet = propagation.talbot_carpet(
@@ -748,32 +821,60 @@ class GratingLabApp:
             dx=grid.dx,
             wavelength=self.wavelength,
             d=self.period,
-            n_z_steps=200,
+            n_z_steps=250,
             z_max=2.0 * z_t,
         )
 
         crop = np.abs(x) <= (3.0 * self.period)
+        x_crop_um = x[crop] * 1e6
+        z_max_um = z_arr[-1] * 1e6
+        z_t_um = z_t * 1e6
+
         im = ax_t.imshow(
             carpet[:, crop],
-            extent=[x[crop][0] * 1e6, x[crop][-1] * 1e6, 0.0, z_arr[-1] * 1e6],
+            extent=[x_crop_um[0], x_crop_um[-1], 0.0, z_max_um],
             aspect="auto",
             origin="lower",
             cmap="inferno",
         )
-        ax_t.axhline(z_t * 1e6, color="#2dd4bf", ls="--", lw=1.2, label=f"Talbot Length z_T = {z_t*1e6:.2f} µm")
+
+        # Fractional Talbot sub-plane markers
+        ax_t.axhline(z_t_um, color="#2dd4bf", ls="-", lw=1.4, label=f"z = z_T (Full Self-Image, {z_t_um:.2f} µm)")
+        ax_t.axhline(z_t_um * 0.5, color="#f59e0b", ls="--", lw=1.2, label=f"z = z_T/2 (Half-Talbot Shift, {z_t_um*0.5:.2f} µm)")
+        ax_t.axhline(z_t_um * 0.25, color="#f97316", ls=":", lw=1.2, label=f"z = z_T/4 (Frequency Doubling, {z_t_um*0.25:.2f} µm)")
+
+        # Secondary y-axis for normalized propagation distance z / z_T
+        ax_norm = ax_t.twinx()
+        ax_norm.set_ylim(0.0, 2.0)
+        ax_norm.set_ylabel("Normalized Distance z / z_T", fontsize=8.5, color="#38bdf8")
+        ax_norm.tick_params(colors="#38bdf8", labelsize=8)
+        for spine in ax_norm.spines.values():
+            spine.set_color("#242c38")
+
+        ax_t.tick_params(colors="#8b949e", labelsize=8)
+        for spine in ax_t.spines.values():
+            spine.set_color("#242c38")
+            spine.set_linewidth(0.8)
+
         ax_t.set_title(
-            f"NEAR-FIELD ASM PROPAGATION // TALBOT SELF-IMAGING (d = {self.period*1e6:.2f} µm, λ = {self.wavelength*1e9:.0f} nm)",
-            fontsize=9.5, fontweight="bold", color="#e6edf3", pad=10
+            f"NEAR-FIELD ASM WAVEFIELD PROPAGATION // TALBOT SELF-IMAGING PHENOMENON\n"
+            f"Parameters: Pitch d = {self.period*1e6:.2f} µm  |  Wavelength λ = {self.wavelength*1e9:.0f} nm  |  Talbot Distance z_T = {z_t_um:.2f} µm",
+            fontsize=9.2,
+            fontweight="bold",
+            color="#e6edf3",
+            pad=12,
+            loc="left",
         )
-        ax_t.set_xlabel("Transverse Position x [µm]", fontsize=8.5, color="#8b949e")
+        ax_t.set_xlabel("Transverse Coordinate x [µm]", fontsize=8.5, color="#8b949e")
         ax_t.set_ylabel("Propagation Distance z [µm]", fontsize=8.5, color="#8b949e")
-        leg = ax_t.legend(loc="upper right", facecolor="#161c24", edgecolor="#2c3543", fontsize=8)
+
+        leg = ax_t.legend(loc="upper right", fontsize=7.8, facecolor="#161c24", edgecolor="#2c3543")
         for t in leg.get_texts():
             t.set_color("#e6edf3")
 
-        cbar = fig_t.colorbar(im, ax=ax_t, pad=0.02)
+        cbar = fig_t.colorbar(im, ax=ax_norm, pad=0.08)
         cbar.ax.tick_params(colors="#8b949e", labelsize=8)
-        cbar.set_label("Wavefield Intensity |U(x,z)|²", fontsize=8.5, color="#8b949e")
+        cbar.set_label("Normalized Wavefield Irradiance |U(x, z)|²", fontsize=8.5, color="#8b949e")
         cbar.outline.set_edgecolor("#242c38")
 
         plt.tight_layout()
