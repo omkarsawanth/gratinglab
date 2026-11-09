@@ -1,9 +1,16 @@
 """
 gratinglab.visualize
 ====================
-Interactive Matplotlib dashboard for optical grating diffraction and characterization.
-Redesigned with GridSpec layout, 3 vertical zones, 4 structured control groups,
-progressive disclosure, and collision-free slider typography.
+Premium scientific instrument dashboard for optical grating diffraction and characterization.
+Inspired by laboratory spectrum analyzers, Bloomberg-grade data density, and modern dark CAD metrology.
+
+Architecture:
+- Matte obsidian chassis (#0b0f14) and dark titanium subplots (#11161d)
+- Cohesive Teal (#14b8a6) and Orange (#f97316) instrument accent system
+- Top navigation bar with system identity, status telemetry, and quick preset buttons
+- Dual-channel oscilloscope simulation workspace (transmittance profile & Fraunhofer spectrum)
+- Calibrated optical detector screen strip
+- Four modular control & telemetry decks with Bloomberg-density order analytics
 """
 
 from __future__ import annotations
@@ -131,38 +138,59 @@ class GratingLabApp:
         self.on_type(self.grating_type)
 
     def build_layout(self) -> None:
-        """Create pure GridSpec architecture in three vertical zones without manual coordinates."""
-        plt.style.use("fast")
-        self.fig = plt.figure(figsize=(16, 9.5), dpi=100)
-        self.fig.canvas.manager.set_window_title("GratingLab: Optical Diffraction Studio")
+        """Create pure GridSpec dark scientific dashboard architecture without manual coordinates."""
+        plt.style.use("dark_background")
+        self.fig = plt.figure(figsize=(16, 9.5), dpi=100, facecolor="#0b0f14")
+        self.fig.canvas.manager.set_window_title("GratingLab // Precision Optical Metrology & Diffraction Studio")
 
-        # 3 Vertical Zones:
-        # Zone 1: Aperture profile and far-field diffraction plots
-        # Zone 2: Simulated laser screen strip
-        # Zone 3: 4-Column control dashboard
+        # 4 Primary Vertical Tiers:
+        # Tier 0: Instrument Navigation & Quick Preset Bar
+        # Tier 1: Dual Oscilloscope Simulation Workspace
+        # Tier 2: Calibrated Optical Detector Array (Screen Strip)
+        # Tier 3: 4-Column Control Deck & High-Density Telemetry Terminal
         self.gs_main = self.fig.add_gridspec(
-            3, 1,
-            height_ratios=[3.6, 0.8, 3.8],
-            hspace=0.34,
-            left=0.045, right=0.965, top=0.95, bottom=0.045,
+            4, 1,
+            height_ratios=[0.38, 3.15, 0.55, 3.75],
+            hspace=0.44,
+            left=0.035, right=0.965, top=0.965, bottom=0.035,
         )
 
-        # Zone 1: Top Plots
-        gs_top = self.gs_main[0].subgridspec(1, 2, width_ratios=[1.0, 1.25], wspace=0.18)
-        self.ax_profile = self.fig.add_subplot(gs_top[0])
-        self.ax_fft = self.fig.add_subplot(gs_top[1])
+        # ─── Top Instrument Header Bar ───
+        gs_head = self.gs_main[0].subgridspec(1, 3, width_ratios=[1.3, 0.9, 1.4], wspace=0.1)
+        self.ax_head_brand = self.fig.add_subplot(gs_head[0])
+        self.ax_head_brand.axis("off")
 
-        # Zone 2: Screen Strip
-        self.ax_screen = self.fig.add_subplot(self.gs_main[1])
+        self.ax_head_status = self.fig.add_subplot(gs_head[1])
+        self.ax_head_status.axis("off")
 
-        # Zone 3: 4 Control Columns
-        self.gs_controls = self.gs_main[2].subgridspec(
+        self.gs_hbtns = gs_head[2].subgridspec(1, 5, wspace=0.12)
+
+        # ─── Dual-Channel Oscilloscopes ───
+        gs_plots = self.gs_main[1].subgridspec(1, 2, width_ratios=[1.0, 1.25], wspace=0.16)
+        self.ax_profile = self.fig.add_subplot(gs_plots[0], facecolor="#11161d")
+        self.ax_fft = self.fig.add_subplot(gs_plots[1], facecolor="#11161d")
+
+        for ax in (self.ax_profile, self.ax_fft):
+            ax.tick_params(colors="#8b949e", labelsize=8)
+            for spine in ax.spines.values():
+                spine.set_color("#242c38")
+                spine.set_linewidth(0.8)
+
+        # ─── Detector Array Screen Strip ───
+        self.ax_screen = self.fig.add_subplot(self.gs_main[2], facecolor="#000000")
+        self.ax_screen.tick_params(colors="#8b949e", labelsize=8)
+        for spine in self.ax_screen.spines.values():
+            spine.set_color("#242c38")
+            spine.set_linewidth(0.8)
+
+        # ─── 4-Column Control Deck & Terminal ───
+        self.gs_controls = self.gs_main[3].subgridspec(
             1, 4,
-            width_ratios=[1.0, 1.25, 1.25, 1.2],
+            width_ratios=[1.0, 1.25, 1.25, 1.35],
             wspace=0.22,
         )
 
-    def _create_slider(
+    def _create_dark_slider(
         self,
         cell,
         title: str,
@@ -173,15 +201,19 @@ class GratingLabApp:
         valfmt: str,
         accent_color: str,
     ):
-        """Build an anti-collision slider with title on left and value on right above the slim track."""
+        """Construct a high-density, collision-free dark scientific slider."""
         gs_item = cell.subgridspec(2, 1, height_ratios=[0.45, 0.55], hspace=0.1)
 
         ax_lbl = self.fig.add_subplot(gs_item[0])
         ax_lbl.axis("off")
-        ax_lbl.text(0.0, 0.1, title, fontsize=9, fontweight="bold", color="#1e293b", ha="left", va="bottom")
-        val_txt = ax_lbl.text(1.0, 0.1, valfmt % valinit, fontsize=9, fontweight="bold", color="#1e293b", ha="right", va="bottom")
+        ax_lbl.text(0.0, 0.1, title, fontsize=8.2, fontweight="bold", color="#8b949e", ha="left", va="bottom", family="monospace")
+        val_txt = ax_lbl.text(1.0, 0.1, valfmt % valinit, fontsize=8.5, fontweight="bold", color=accent_color, ha="right", va="bottom", family="monospace")
 
-        ax_track = self.fig.add_subplot(gs_item[1])
+        ax_track = self.fig.add_subplot(gs_item[1], facecolor="#161c24")
+        for spine in ax_track.spines.values():
+            spine.set_color("#242c38")
+            spine.set_linewidth(0.6)
+
         slider = Slider(
             ax_track,
             "",
@@ -190,7 +222,7 @@ class GratingLabApp:
             valinit=valinit,
             valstep=valstep,
             color=accent_color,
-            track_color="#e2e8f0",
+            track_color="#161c24",
             initcolor="none",
         )
         slider.valtext.set_visible(False)
@@ -203,134 +235,164 @@ class GratingLabApp:
         return slider, ax_lbl, ax_track, val_txt
 
     def build_controls(self) -> None:
-        """Construct the 4 control groups with consistent color coding and clear labels."""
+        """Construct the top preset bar, 3 instrument control decks, and real-time telemetry terminal."""
         # ─────────────────────────────────────────────────────────────
-        # Column 1: Grating Type & View Options (Theme: Navy #1e3a8a)
+        # Top Header Bar Content
         # ─────────────────────────────────────────────────────────────
-        gs_col0 = self.gs_controls[0].subgridspec(4, 1, height_ratios=[0.45, 1.8, 0.35, 1.0], hspace=0.15)
+        self.ax_head_brand.text(0.0, 0.85, "GRATINGLAB // OPTICAL SPECTROMETER", fontsize=10.5, fontweight="bold", color="#f0f6fc", family="sans-serif")
+        self.ax_head_brand.text(0.0, 0.15, "SYS-ID: GL-650X-PRO  |  PRECISION OPTICAL METROLOGY", fontsize=7.6, color="#8b949e", family="monospace")
 
-        ax_h0 = self.fig.add_subplot(gs_col0[0])
+        self.lbl_head_status = self.ax_head_status.text(0.5, 0.85, "● SYSTEM ONLINE", fontsize=8.8, fontweight="bold", color="#10b981", family="monospace", ha="center")
+        self.lbl_head_telemetry = self.ax_head_status.text(0.5, 0.15, "LIVE // λ = 650 nm | d = 1.60 µm", fontsize=7.6, color="#64748b", family="monospace", ha="center")
+
+        # Top Instrument Action Buttons
+        self.btn_preset1 = Button(self.fig.add_subplot(self.gs_hbtns[0]), "Single Slit", color="#161c24", hovercolor="#242c38")
+        self.btn_preset1.label.set_fontsize(7.5)
+        self.btn_preset1.label.set_color("#e6edf3")
+        self.btn_preset1.on_clicked(lambda _e: self.apply_preset("Single slit"))
+
+        self.btn_preset2 = Button(self.fig.add_subplot(self.gs_hbtns[1]), "Grating (CD)", color="#161c24", hovercolor="#242c38")
+        self.btn_preset2.label.set_fontsize(7.5)
+        self.btn_preset2.label.set_color("#e6edf3")
+        self.btn_preset2.on_clicked(lambda _e: self.apply_preset("Diffraction grating"))
+
+        self.btn_preset3 = Button(self.fig.add_subplot(self.gs_hbtns[2]), "Blazed Spec", color="#161c24", hovercolor="#242c38")
+        self.btn_preset3.label.set_fontsize(7.5)
+        self.btn_preset3.label.set_color("#e6edf3")
+        self.btn_preset3.on_clicked(lambda _e: self.apply_preset("Blazed spectrometer"))
+
+        self.btn_talbot = Button(self.fig.add_subplot(self.gs_hbtns[3]), "Talbot 2D", color="#0c2b2e", hovercolor="#115e59")
+        self.btn_talbot.label.set_fontsize(7.5)
+        self.btn_talbot.label.set_fontweight("bold")
+        self.btn_talbot.label.set_color("#2dd4bf")
+        self.btn_talbot.on_clicked(self.open_talbot_window)
+
+        self.btn_reset = Button(self.fig.add_subplot(self.gs_hbtns[4]), "Reset", color="#2c1517", hovercolor="#4c1d24")
+        self.btn_reset.label.set_fontsize(7.5)
+        self.btn_reset.label.set_fontweight("bold")
+        self.btn_reset.label.set_color("#fca5a5")
+        self.btn_reset.on_clicked(self.reset)
+
+        # ─────────────────────────────────────────────────────────────
+        # Section 01: Grating Profile & Optical Mode (Theme: Sky / Teal)
+        # ─────────────────────────────────────────────────────────────
+        gs_c0 = self.gs_controls[0].subgridspec(4, 1, height_ratios=[0.4, 1.8, 0.35, 1.0], hspace=0.15)
+
+        ax_h0 = self.fig.add_subplot(gs_c0[0])
         ax_h0.axis("off")
-        ax_h0.text(0.0, 0.9, "1. Grating Type", fontsize=10, fontweight="bold", color="#1e3a8a")
-        ax_h0.text(0.0, 0.1, "Profile & View Options", fontsize=8, fontstyle="italic", color="#64748b")
+        ax_h0.text(0.0, 0.85, "SECTION 01 // GRATING PROFILE", fontsize=8.5, fontweight="bold", color="#38bdf8", family="monospace")
+        ax_h0.text(0.0, 0.1, "Aperture modulation function", fontsize=7.5, color="#64748b")
 
-        ax_radio = self.fig.add_subplot(gs_col0[1])
+        ax_radio = self.fig.add_subplot(gs_c0[1], facecolor="#11161d")
+        for spine in ax_radio.spines.values():
+            spine.set_color("#242c38")
+            spine.set_linewidth(0.8)
+
         self.radio_type = RadioButtons(
             ax_radio,
             ("Binary Amplitude", "Sinusoidal Phase", "Blazed Phase", "2D Orthogonal"),
             active=["Binary Amplitude", "Sinusoidal Phase", "Blazed Phase", "2D Orthogonal"].index(self.grating_type),
-            activecolor="#2563eb",
+            activecolor="#14b8a6",
         )
+        for label in self.radio_type.labels:
+            label.set_color("#e6edf3")
+            label.set_fontsize(8)
         self.radio_type.on_clicked(self.on_type)
 
-        ax_h0_sub = self.fig.add_subplot(gs_col0[2])
+        ax_h0_sub = self.fig.add_subplot(gs_c0[2])
         ax_h0_sub.axis("off")
-        ax_h0_sub.text(0.0, 0.1, "View Options:", fontsize=8.5, fontweight="bold", color="#334155")
+        ax_h0_sub.text(0.0, 0.1, "VIEW MODES:", fontsize=8, fontweight="bold", color="#8b949e", family="monospace")
 
-        ax_checks = self.fig.add_subplot(gs_col0[3])
+        ax_checks = self.fig.add_subplot(gs_c0[3], facecolor="#11161d")
+        for spine in ax_checks.spines.values():
+            spine.set_color("#242c38")
+            spine.set_linewidth(0.8)
+
         self.check_toggles = CheckButtons(
             ax_checks,
             ("Log Scale", "Compare Analytical"),
             (self.log_scale, self.compare_analytical),
         )
+        for label in self.check_toggles.labels:
+            label.set_color("#e6edf3")
+            label.set_fontsize(8)
         self.check_toggles.on_clicked(self.on_toggle)
 
         # ─────────────────────────────────────────────────────────────
-        # Column 2: Light Source (Theme: Orange #c2410c)
+        # Section 02: Laser Emitter (Theme: Laboratory Orange #f97316)
         # ─────────────────────────────────────────────────────────────
-        gs_col1 = self.gs_controls[1].subgridspec(5, 1, height_ratios=[0.45, 0.85, 0.85, 0.85, 0.85], hspace=0.35)
+        gs_c1 = self.gs_controls[1].subgridspec(5, 1, height_ratios=[0.4, 0.85, 0.85, 0.85, 0.85], hspace=0.35)
 
-        ax_h1 = self.fig.add_subplot(gs_col1[0])
+        ax_h1 = self.fig.add_subplot(gs_c1[0])
         ax_h1.axis("off")
-        ax_h1.text(0.0, 0.9, "2. Light Source", fontsize=10, fontweight="bold", color="#c2410c")
-        ax_h1.text(0.0, 0.1, "Laser beam & screen setup", fontsize=8, fontstyle="italic", color="#64748b")
+        ax_h1.text(0.0, 0.85, "SECTION 02 // LASER EMITTER", fontsize=8.5, fontweight="bold", color="#f97316", family="monospace")
+        ax_h1.text(0.0, 0.1, "Coherent laser excitation", fontsize=7.5, color="#64748b")
 
-        self.s_wl, _, _, self.txt_wl = self._create_slider(
-            gs_col1[1], "Wavelength [nm]", 400.0, 700.0, self.wavelength * 1e9, 1.0, "%0.0f", "#ea580c"
+        self.s_wl, _, _, self.txt_wl = self._create_dark_slider(
+            gs_c1[1], "WAVELENGTH λ", 400.0, 700.0, self.wavelength * 1e9, 1.0, "%0.0f nm", "#f97316"
         )
-        self.s_theta, _, _, self.txt_theta = self._create_slider(
-            gs_col1[2], "Incidence θᵢ [°]", -30.0, 30.0, math.degrees(self.theta_i), 0.5, "%0.1f°", "#ea580c"
+        self.s_theta, _, _, self.txt_theta = self._create_dark_slider(
+            gs_c1[2], "INCIDENCE ANGLE θᵢ", -30.0, 30.0, math.degrees(self.theta_i), 0.5, "%0.1f°", "#f97316"
         )
-        self.s_waist, _, _, self.txt_waist = self._create_slider(
-            gs_col1[3], "Beam Waist [µm]", 5.0, 100.0, self.beam_waist * 1e6, 1.0, "%0.1f", "#ea580c"
+        self.s_waist, _, _, self.txt_waist = self._create_dark_slider(
+            gs_c1[3], "BEAM WAIST w₀", 5.0, 100.0, self.beam_waist * 1e6, 1.0, "%0.1f µm", "#f97316"
         )
-        self.s_dist, _, _, self.txt_dist = self._create_slider(
-            gs_col1[4], "Screen Dist L [m]", 0.1, 2.0, self.screen_dist, 0.05, "%0.2f m", "#ea580c"
+        self.s_dist, _, _, self.txt_dist = self._create_dark_slider(
+            gs_c1[4], "SCREEN DIST L", 0.1, 2.0, self.screen_dist, 0.05, "%0.2f m", "#f97316"
         )
 
         # ─────────────────────────────────────────────────────────────
-        # Column 3: Grating Structure (Theme: Teal #0f766e)
+        # Section 03: Microstructure Geometry (Theme: Laboratory Teal #14b8a6)
         # ─────────────────────────────────────────────────────────────
-        gs_col2 = self.gs_controls[2].subgridspec(5, 1, height_ratios=[0.45, 0.85, 0.85, 0.85, 0.85], hspace=0.35)
+        gs_c2 = self.gs_controls[2].subgridspec(5, 1, height_ratios=[0.4, 0.85, 0.85, 0.85, 0.85], hspace=0.35)
 
-        ax_h2 = self.fig.add_subplot(gs_col2[0])
+        ax_h2 = self.fig.add_subplot(gs_c2[0])
         ax_h2.axis("off")
-        ax_h2.text(0.0, 0.9, "3. Grating Structure", fontsize=10, fontweight="bold", color="#0f766e")
-        ax_h2.text(0.0, 0.1, "Microstructure geometry", fontsize=8, fontstyle="italic", color="#64748b")
+        ax_h2.text(0.0, 0.85, "SECTION 03 // GRATING STRUCTURE", fontsize=8.5, fontweight="bold", color="#14b8a6", family="monospace")
+        ax_h2.text(0.0, 0.1, "Diffractive microstructure pitch", fontsize=7.5, color="#64748b")
 
-        self.s_period, _, _, self.txt_period = self._create_slider(
-            gs_col2[1], "Period d [µm]", 0.5, 20.0, self.period * 1e6, 0.05, "%0.2f", "#0d9488"
+        self.s_period, _, _, self.txt_period = self._create_dark_slider(
+            gs_c2[1], "GRATING PITCH d", 0.5, 20.0, self.period * 1e6, 0.05, "%0.2f µm", "#14b8a6"
         )
-        self.s_n, _, _, self.txt_n = self._create_slider(
-            gs_col2[2], "Slits / Lines N", 2, 50, self.n_slits, 1, "%d", "#0d9488"
+        self.s_n, _, _, self.txt_n = self._create_dark_slider(
+            gs_c2[2], "RULINGS COUNT N", 2, 50, self.n_slits, 1, "%d lines", "#14b8a6"
         )
 
         # Progressive disclosure slot (row 3): Duty vs Phase Depth
-        self.s_duty, self.ax_duty_lbl, self.ax_duty_track, self.txt_duty = self._create_slider(
-            gs_col2[3], "Duty / Slit frac", 0.05, 0.95, self.duty, 0.01, "%0.2f", "#0d9488"
+        self.s_duty, self.ax_duty_lbl, self.ax_duty_track, self.txt_duty = self._create_dark_slider(
+            gs_c2[3], "DUTY / SLIT FRAC", 0.05, 0.95, self.duty, 0.01, "%0.2f", "#14b8a6"
         )
-        self.s_phase, self.ax_phase_lbl, self.ax_phase_track, self.txt_phase = self._create_slider(
-            gs_col2[3], "Phase Depth [rad]", 0.1, 4.0 * math.pi, self.phase_depth, 0.1, "%0.2f rad", "#0d9488"
+        self.s_phase, self.ax_phase_lbl, self.ax_phase_track, self.txt_phase = self._create_dark_slider(
+            gs_c2[3], "PHASE DEPTH φ₀", 0.1, 4.0 * math.pi, self.phase_depth, 0.1, "%0.2f rad", "#14b8a6"
         )
 
-        ax_g_hint = self.fig.add_subplot(gs_col2[4])
+        ax_g_hint = self.fig.add_subplot(gs_c2[4])
         ax_g_hint.axis("off")
-        self.lbl_grating_hint = ax_g_hint.text(0.0, 0.4, "", fontsize=8, color="#475569")
+        self.lbl_grating_freq = ax_g_hint.text(0.0, 0.65, "", fontsize=7.8, color="#38bdf8", family="monospace")
+        self.lbl_grating_hint = ax_g_hint.text(0.0, 0.15, "", fontsize=7.5, color="#64748b")
 
         # ─────────────────────────────────────────────────────────────
-        # Column 4: Diagnostics & Presets (Theme: Charcoal #1e293b)
+        # Section 04: Bloomberg-Grade Telemetry Terminal (Theme: Cyan #38bdf8)
         # ─────────────────────────────────────────────────────────────
-        gs_col3 = self.gs_controls[3].subgridspec(4, 1, height_ratios=[0.35, 1.85, 0.38, 0.72], hspace=0.16)
+        gs_c3 = self.gs_controls[3].subgridspec(2, 1, height_ratios=[0.4, 3.4], hspace=0.08)
 
-        ax_h3 = self.fig.add_subplot(gs_col3[0])
+        ax_h3 = self.fig.add_subplot(gs_c3[0])
         ax_h3.axis("off")
-        ax_h3.text(0.0, 0.9, "4. Diagnostics & Presets", fontsize=10, fontweight="bold", color="#1e293b")
-        ax_h3.text(0.0, 0.1, "Readouts & quick setups", fontsize=8, fontstyle="italic", color="#64748b")
+        ax_h3.text(0.0, 0.85, "SECTION 04 // OPTICAL TELEMETRY", fontsize=8.5, fontweight="bold", color="#38bdf8", family="monospace")
+        ax_h3.text(0.0, 0.1, "Real-time Fraunhofer order analysis", fontsize=7.5, color="#64748b")
 
-        ax_info = self.fig.add_subplot(gs_col3[1])
-        ax_info.axis("off")
-        self.info_text = ax_info.text(
-            0.0, 1.0, "", va="top", ha="left", fontsize=7.2, family="monospace",
-            bbox=dict(boxstyle="round,pad=0.35", facecolor="#f8fafc", edgecolor="#cbd5e1", lw=0.9),
+        self.ax_term = self.fig.add_subplot(gs_c3[1], facecolor="#090d12")
+        for spine in self.ax_term.spines.values():
+            spine.set_color("#242c38")
+            spine.set_linewidth(0.8)
+        self.ax_term.set_xticks([])
+        self.ax_term.set_yticks([])
+
+        self.term_text = self.ax_term.text(
+            0.04, 0.94, "",
+            va="top", ha="left", fontsize=7.3, family="monospace", color="#7dd3fc",
+            linespacing=1.28
         )
-
-        ax_btn_talbot = self.fig.add_subplot(gs_col3[2])
-        self.btn_talbot = Button(ax_btn_talbot, "Show Talbot Carpet", color="#f1f5f9", hovercolor="#e2e8f0")
-        self.btn_talbot.label.set_fontsize(8.5)
-        self.btn_talbot.label.set_fontweight("bold")
-        self.btn_talbot.label.set_color("#0f172a")
-        self.btn_talbot.on_clicked(self.open_talbot_window)
-
-        # 2x2 Subgridspec for Presets and Reset
-        gs_btns = gs_col3[3].subgridspec(2, 2, hspace=0.25, wspace=0.15)
-
-        self.btn_preset1 = Button(self.fig.add_subplot(gs_btns[0, 0]), "Single Slit", color="#f8fafc", hovercolor="#e2e8f0")
-        self.btn_preset1.label.set_fontsize(7.5)
-        self.btn_preset1.on_clicked(lambda _e: self.apply_preset("Single slit"))
-
-        self.btn_preset2 = Button(self.fig.add_subplot(gs_btns[0, 1]), "Grating (CD)", color="#f8fafc", hovercolor="#e2e8f0")
-        self.btn_preset2.label.set_fontsize(7.5)
-        self.btn_preset2.on_clicked(lambda _e: self.apply_preset("Diffraction grating"))
-
-        self.btn_preset3 = Button(self.fig.add_subplot(gs_btns[1, 0]), "Blazed Spec", color="#f8fafc", hovercolor="#e2e8f0")
-        self.btn_preset3.label.set_fontsize(7.5)
-        self.btn_preset3.on_clicked(lambda _e: self.apply_preset("Blazed spectrometer"))
-
-        self.btn_reset = Button(self.fig.add_subplot(gs_btns[1, 1]), "Reset Defaults", color="#fee2e2", hovercolor="#fecaca")
-        self.btn_reset.label.set_fontsize(7.5)
-        self.btn_reset.label.set_fontweight("bold")
-        self.btn_reset.label.set_color("#991b1b")
-        self.btn_reset.on_clicked(self.reset)
 
     def on_type(self, label: str) -> None:
         """Handle grating profile switching and progressive disclosure."""
@@ -349,10 +411,10 @@ class GratingLabApp:
             self.ax_duty_track.set_visible(True)
 
         hints = {
-            "Binary Amplitude": "Binary amplitude: chrome-on-glass slits",
-            "Sinusoidal Phase": "Sinusoidal phase: continuous phase relief",
-            "Blazed Phase": "Blazed phase: asymmetric sawtooth blazed grooves",
-            "2D Orthogonal": "2D orthogonal: 2-axis square mesh",
+            "Binary Amplitude": "Profile: Binary chrome-on-glass slits",
+            "Sinusoidal Phase": "Profile: Sinusoidal phase modulation",
+            "Blazed Phase": "Profile: Asymmetric sawtooth blazed grooves",
+            "2D Orthogonal": "Profile: 2D orthogonal grid mesh",
         }
         self.lbl_grating_hint.set_text(hints.get(label, ""))
         self.update(None)
@@ -438,22 +500,22 @@ class GratingLabApp:
 
         if wl is not None:
             self.s_wl.set_val(wl)
-            self.txt_wl.set_text("%0.0f" % wl)
+            self.txt_wl.set_text("%0.0f nm" % wl)
         if theta is not None:
             self.s_theta.set_val(theta)
             self.txt_theta.set_text("%0.1f°" % theta)
         if waist is not None:
             self.s_waist.set_val(waist)
-            self.txt_waist.set_text("%0.1f" % waist)
+            self.txt_waist.set_text("%0.1f µm" % waist)
         if dist is not None:
             self.s_dist.set_val(dist)
             self.txt_dist.set_text("%0.2f m" % dist)
         if period is not None:
             self.s_period.set_val(period)
-            self.txt_period.set_text("%0.2f" % period)
+            self.txt_period.set_text("%0.2f µm" % period)
         if n_slits is not None:
             self.s_n.set_val(n_slits)
-            self.txt_n.set_text("%d" % n_slits)
+            self.txt_n.set_text("%d lines" % n_slits)
         if duty is not None:
             self.s_duty.set_val(duty)
             self.txt_duty.set_text("%0.2f" % duty)
@@ -480,7 +542,7 @@ class GratingLabApp:
         self.on_type(self.grating_type)
 
     def update(self, _val=None) -> None:
-        """Perform exact wave-optics calculation, update plots, screen pattern, and info diagnostics."""
+        """Perform exact wave-optics calculation, update plots, screen pattern, and telemetry terminal."""
         self.wavelength = self.s_wl.val * 1e-9
         self.period = self.s_period.val * 1e-6
         self.duty = self.s_duty.val
@@ -489,6 +551,13 @@ class GratingLabApp:
         self.theta_i = math.radians(self.s_theta.val)
         self.screen_dist = self.s_dist.val
         self.beam_waist = self.s_waist.val * 1e-6
+
+        # Update spatial frequency label
+        spatial_freq = 1.0 / (self.period * 1e3) if self.period > 0 else 0.0
+        self.lbl_grating_freq.set_text(f"SPATIAL FREQUENCY: {spatial_freq:.1f} lines/mm")
+
+        # Update top status telemetry
+        self.lbl_head_telemetry.set_text(f"LIVE // λ = {self.s_wl.val:.0f} nm | d = {self.period*1e6:.2f} µm")
 
         display_periods = max(12, int(self.n_slits * 1.5))
         window_width = display_periods * self.period
@@ -508,19 +577,23 @@ class GratingLabApp:
         incident_beam = propagation.gaussian_beam(grid.x, w0=self.beam_waist)
         t_illuminated = t_raw * aperture_mask * incident_beam
 
-        # 1. Aperture Plane Plot
+        # ─── 1. Channel 1: Aperture Plane Plot ───
         self.ax_profile.clear()
+        self.ax_profile.set_facecolor("#11161d")
         x_um = grid.x * 1e6
         crop_mask = np.abs(grid.x) <= (4.0 * self.period)
-        self.ax_profile.plot(x_um[crop_mask], np.abs(t_raw)[crop_mask], label="Magnitude |t|", color="#1f77b4", lw=1.5)
-        self.ax_profile.plot(x_um[crop_mask], np.angle(t_raw)[crop_mask] / math.pi, label="Phase / π", color="#ff7f0e", ls="--", lw=1.2)
-        self.ax_profile.set_title(f"Aperture Plane Transmittance: {self.grating_type}", fontsize=10, fontweight="bold", pad=16)
-        self.ax_profile.set_xlabel("x [µm]", fontsize=8.5)
-        self.ax_profile.set_ylabel("Amplitude / Phase", fontsize=8.5)
-        self.ax_profile.grid(True, linestyle=":", alpha=0.5)
-        self.ax_profile.legend(loc="upper right", fontsize=8, framealpha=0.8)
 
-        # 2. Far-Field Fraunhofer Diffraction Plot
+        self.ax_profile.plot(x_um[crop_mask], np.abs(t_raw)[crop_mask], label="CH1: |t(x)| Magnitude", color="#14b8a6", lw=1.5)
+        self.ax_profile.plot(x_um[crop_mask], np.angle(t_raw)[crop_mask] / math.pi, label="CH2: Phase φ / π", color="#f97316", ls="--", lw=1.2)
+        self.ax_profile.set_title(f"CH1 // APERTURE TRANSMITTANCE PROFILE: {self.grating_type.upper()}", fontsize=9, fontweight="bold", color="#e6edf3", pad=10, loc="left")
+        self.ax_profile.set_xlabel("Transverse Position x [µm]", fontsize=8, color="#8b949e", labelpad=2)
+        self.ax_profile.set_ylabel("Amplitude / Phase Ratio", fontsize=8, color="#8b949e")
+        self.ax_profile.grid(True, linestyle=":", color="#212936", alpha=0.8)
+        leg1 = self.ax_profile.legend(loc="upper right", fontsize=7.5, facecolor="#161c24", edgecolor="#2c3543")
+        for text in leg1.get_texts():
+            text.set_color("#e6edf3")
+
+        # ─── 2. Channel 2: Far-Field Fraunhofer Diffraction Spectrum ───
         sin_theta, intensity, theta_deg = propagation.far_field_fft(
             t_illuminated,
             dx=grid.dx,
@@ -529,8 +602,9 @@ class GratingLabApp:
         )
 
         self.ax_fft.clear()
+        self.ax_fft.set_facecolor("#11161d")
         y_data = np.maximum(intensity, 1e-4) if self.log_scale else intensity
-        self.ax_fft.plot(theta_deg, y_data, label="Numerical FFT", color="#2ca02c", lw=1.5)
+        self.ax_fft.plot(theta_deg, y_data, label="FFT Spectrum", color="#10b981", lw=1.6)
 
         if self.compare_analytical and self.grating_type == "Binary Amplitude":
             theta_rad_dense = np.radians(theta_deg)
@@ -543,7 +617,7 @@ class GratingLabApp:
                 theta_i=self.theta_i,
             )
             y_analytical = np.maximum(i_analytical, 1e-4) if self.log_scale else i_analytical
-            self.ax_fft.plot(theta_deg, y_analytical, label="Analytical N-Slit", color="#d62728", ls=":", lw=1.3)
+            self.ax_fft.plot(theta_deg, y_analytical, label="Analytical N-Slit", color="#f59e0b", ls=":", lw=1.3)
 
         orders, evanescent = analytical.order_angles(
             d=self.period,
@@ -554,7 +628,7 @@ class GratingLabApp:
         for m, ang_rad in orders.items():
             ang_d = math.degrees(ang_rad)
             if -48.0 <= ang_d <= 48.0:
-                self.ax_fft.axvline(ang_d, color="#718096", linestyle="--", alpha=0.5, lw=0.9)
+                self.ax_fft.axvline(ang_d, color="#334155", linestyle="--", alpha=0.7, lw=0.9)
                 self.ax_fft.text(
                     ang_d,
                     1.01,
@@ -563,28 +637,31 @@ class GratingLabApp:
                     fontsize=8,
                     ha="center",
                     va="bottom",
-                    color="#334155",
+                    color="#38bdf8",
                     fontweight="bold",
+                    family="monospace",
                 )
 
-        self.ax_fft.set_title("Far-Field Fraunhofer Diffraction Pattern", fontsize=10, fontweight="bold", pad=16)
-        self.ax_fft.set_xlabel("Diffraction Angle θ [degrees]", fontsize=8.5)
-        self.ax_fft.set_ylabel("Intensity (Log)" if self.log_scale else "Normalized Intensity", fontsize=8.5)
+        self.ax_fft.set_title("CH2 // FAR-FIELD FRAUNHOFER DIFFRACTION SPECTRUM", fontsize=9, fontweight="bold", color="#e6edf3", pad=10, loc="left")
+        self.ax_fft.set_xlabel("Diffraction Angle θ [deg]", fontsize=8, color="#8b949e", labelpad=2)
+        self.ax_fft.set_ylabel("Intensity (Log)" if self.log_scale else "Normalized Intensity I(θ)", fontsize=8, color="#8b949e")
         self.ax_fft.set_xlim(-50.0, 50.0)
         if self.log_scale:
             self.ax_fft.set_yscale("log")
             self.ax_fft.set_ylim(1e-4, 1.2)
         else:
             self.ax_fft.set_ylim(-0.02, 1.08)
-        self.ax_fft.grid(True, linestyle=":", alpha=0.5)
-        self.ax_fft.legend(loc="upper right", fontsize=8, framealpha=0.8)
+        self.ax_fft.grid(True, linestyle=":", color="#212936", alpha=0.8)
+        leg2 = self.ax_fft.legend(loc="upper right", fontsize=7.5, facecolor="#161c24", edgecolor="#2c3543")
+        for text in leg2.get_texts():
+            text.set_color("#e6edf3")
 
-        # 3. Simulated Screen Pattern
+        # ─── 3. Detector Array: Simulated Screen Pattern ───
         self.ax_screen.clear()
         screen_y_cm = propagation.sin_theta_to_screen_position(np.radians(theta_deg), self.screen_dist) * 100.0
         y_screen_linear = np.linspace(-30.0, 30.0, 600)
         i_screen = np.interp(y_screen_linear, screen_y_cm, intensity, left=0.0, right=0.0)
-        strip_2d = np.tile(i_screen, (40, 1))
+        strip_2d = np.tile(i_screen, (35, 1))
 
         laser_cmap = get_laser_colormap(self.s_wl.val)
         self.ax_screen.imshow(
@@ -595,39 +672,64 @@ class GratingLabApp:
             origin="lower",
         )
         self.ax_screen.set_title(
-            f"Simulated Screen Pattern at L = {self.screen_dist:.2f} m (Laser: {int(self.s_wl.val)} nm)",
-            fontsize=9,
+            f"DETECTOR ARRAY // SIMULATED SCREEN PATTERN (L = {self.screen_dist:.2f} m  |  λ = {int(self.s_wl.val)} nm)",
+            fontsize=8.5,
             fontweight="bold",
-            pad=4,
+            color="#e6edf3",
+            pad=3,
+            loc="left",
         )
-        self.ax_screen.set_xlabel("Screen Position y [cm]", fontsize=8.5)
+        self.ax_screen.set_xlabel("Detector Transverse Offset y [cm]", fontsize=8, color="#8b949e", labelpad=2)
         self.ax_screen.set_yticks([])
 
-        # 4. Monospace Info Diagnostics Panel
-        missing = analytical.missing_orders(self.period, a) if self.grating_type == "Binary Amplitude" else []
-        lines = [
-            f"λ: {int(self.s_wl.val)} nm | d: {self.period*1e6:.2f} µm | θᵢ: {math.degrees(self.theta_i):.1f}°",
-            f"N: {self.n_slits} slits | Screen L: {self.screen_dist:.2f} m",
-            "─" * 30,
-            "Propagating Orders:",
+        # ─── 4. Bloomberg Telemetry Terminal Feed ───
+        z_t_um = (2.0 * self.period**2 / self.wavelength) * 1e6
+        telemetry_lines = [
+            f"SYS: λ={self.wavelength*1e9:.0f}nm  d={self.period*1e6:.2f}µm  N={self.n_slits}  L={self.screen_dist:.2f}m",
+            f"FREQ: {spatial_freq:.0f} lines/mm  |  z_T = {z_t_um:.2f} µm",
+            "─" * 38,
+            "ORD   DIFF-ANGLE    DET-OFFSET   DISPERSION",
         ]
         for m in sorted(orders.keys()):
-            lines.append(f" m = {m:+2d} : {math.degrees(orders[m]):+6.2f}°")
+            ang_deg = math.degrees(orders[m])
+            y_cm = self.screen_dist * math.tan(orders[m]) * 100.0
+            cos_th = math.cos(orders[m])
+            disp = (abs(m) / (self.period * cos_th)) * (180.0 / math.pi) * 1e-9 if cos_th > 1e-4 else 0.0
+            blaze_flag = "  ◀ BLAZE" if (self.grating_type == "Blazed Phase" and m == 1) else ""
+            telemetry_lines.append(f"m={m:+2d}   {ang_deg:+7.2f}°    {y_cm:+7.1f} cm    {disp:0.3f}°/nm{blaze_flag}")
 
-        if missing:
-            lines.append("─" * 30)
-            missing_str = ", ".join(f"±{m}" for m in missing[:4])
-            lines.append(f"Missing: m = {missing_str}")
+        telemetry_lines.append("─" * 38)
+        if self.grating_type == "Binary Amplitude":
+            missing = analytical.missing_orders(self.period, a)
+            if missing:
+                missing_str = ", ".join(f"±{x}" for x in missing[:4])
+                telemetry_lines.append(f"MISSING ORDERS : m = {missing_str} ({int(self.duty*100)}% duty)")
+            else:
+                telemetry_lines.append("MISSING ORDERS : None detected")
+        elif self.grating_type == "Blazed Phase":
+            telemetry_lines.append("PRIMARY BLAZE  : m = +1 (Efficiency ~95%)")
+        elif self.grating_type == "Sinusoidal Phase":
+            telemetry_lines.append(f"PHASE DEPTH    : φ₀ = {self.phase_depth:.2f} rad (Bessel J_m)")
+        else:
+            telemetry_lines.append("2D PROFILE     : 2-axis orthogonal grid")
+
         if evanescent:
-            lines.append(f"Evanescent: |m| ≥ {min(abs(e) for e in evanescent)}")
+            telemetry_lines.append(f"EVANESCENT     : |m| ≥ {min(abs(e) for e in evanescent)} (sin θ > 1)")
+        else:
+            telemetry_lines.append("EVANESCENT     : All modeled orders propagate")
 
-        self.info_text.set_text("\n".join(lines))
+        self.term_text.set_text("\n".join(telemetry_lines))
         self.fig.canvas.draw_idle()
 
     def open_talbot_window(self, _event=None) -> None:
-        """Launch the near-field Talbot carpet simulation in a separate dedicated window."""
-        fig_t, ax_t = plt.subplots(figsize=(9, 6))
-        fig_t.canvas.manager.set_window_title("GratingLab: Near-Field Talbot Carpet")
+        """Launch the near-field Talbot carpet simulation in a dark instrument window."""
+        fig_t, ax_t = plt.subplots(figsize=(9, 6), facecolor="#0b0f14")
+        fig_t.canvas.manager.set_window_title("GratingLab // Near-Field Talbot Carpet Analyzer")
+        ax_t.set_facecolor("#11161d")
+        ax_t.tick_params(colors="#8b949e", labelsize=8)
+        for spine in ax_t.spines.values():
+            spine.set_color("#242c38")
+            spine.set_linewidth(0.8)
 
         z_t = analytical.talbot_distance(self.period, self.wavelength)
         grid = gratings.Grid1D(width=20.0 * self.period, num_samples=1500)
@@ -650,12 +752,22 @@ class GratingLabApp:
             origin="lower",
             cmap="inferno",
         )
-        ax_t.axhline(z_t * 1e6, color="cyan", ls="--", label=f"z_T = {z_t*1e6:.2f} µm")
-        ax_t.set_title(f"Talbot Carpet ($d = {self.period*1e6:.2f}\\,\\mu\\mathrm{{m}}$, $\\lambda = {self.wavelength*1e9:.0f}\\,\\mathrm{{nm}}$)")
-        ax_t.set_xlabel("Transverse x [µm]")
-        ax_t.set_ylabel("Propagation Distance z [µm]")
-        ax_t.legend(loc="upper right")
-        fig_t.colorbar(im, ax=ax_t, label="Intensity")
+        ax_t.axhline(z_t * 1e6, color="#2dd4bf", ls="--", lw=1.2, label=f"Talbot Length z_T = {z_t*1e6:.2f} µm")
+        ax_t.set_title(
+            f"NEAR-FIELD ASM PROPAGATION // TALBOT SELF-IMAGING (d = {self.period*1e6:.2f} µm, λ = {self.wavelength*1e9:.0f} nm)",
+            fontsize=9.5, fontweight="bold", color="#e6edf3", pad=10
+        )
+        ax_t.set_xlabel("Transverse Position x [µm]", fontsize=8.5, color="#8b949e")
+        ax_t.set_ylabel("Propagation Distance z [µm]", fontsize=8.5, color="#8b949e")
+        leg = ax_t.legend(loc="upper right", facecolor="#161c24", edgecolor="#2c3543", fontsize=8)
+        for t in leg.get_texts():
+            t.set_color("#e6edf3")
+
+        cbar = fig_t.colorbar(im, ax=ax_t, pad=0.02)
+        cbar.ax.tick_params(colors="#8b949e", labelsize=8)
+        cbar.set_label("Wavefield Intensity |U(x,z)|²", fontsize=8.5, color="#8b949e")
+        cbar.outline.set_edgecolor("#242c38")
+
         plt.tight_layout()
         plt.show()
 
