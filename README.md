@@ -124,7 +124,7 @@ For a $50\%$ duty cycle ($d/a = 2$), all even orders ($m = \pm 2, \pm 4, \dots$)
 - **Far Field (Fraunhofer)**:
   $$\mathcal{F}\{ U(x) \}_{f_x} \implies \sin\theta = \lambda f_x$$
 - **Near-to-Intermediate Field (Angular Spectrum)**:
-  $$U(x, z) = \mathcal{F}^{-1}\left\{ \mathcal{F}\{U(x, 0)\} \cdot \exp\left(i 2\pi z \sqrt{\frac{1}{\lambda^2} - f_x^2}\right) \right\}$$
+  $$U(x, z) = \mathcal{F}^{-1}\left[ \mathcal{F}\{U(x, 0)\} \cdot \exp\left(i 2\pi z \sqrt{\frac{1}{\lambda^2} - f_x^2}\right) \right]$$
 - **Talbot Self-Imaging**:
   At integer multiples of the Talbot distance $z_T = \frac{2d^2}{\lambda}$, periodic wavefields undergo complete constructive re-phasing, replicating the grating transmission profile without lenses.
 
